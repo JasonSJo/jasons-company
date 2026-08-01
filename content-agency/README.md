@@ -31,7 +31,9 @@ content-agency/
 │   ├── 월간-리포트-템플릿.md
 │   └── 수익화-런북.md               # 자동/사람/결제 개입 지점 전체 흐름
 └── automation/             # 콘텐츠 생성 + 검수 + 발행 + 리포트 자동화
-    ├── run_pipeline.sh             # ★ 원커맨드: 캘린더→생성→규제검출 자동 연결
+    ├── run_all.sh                  # ★★ 전체 자동화: 캘린더→생성→검출→자동승인→발행→리포트
+    ├── run_pipeline.sh             # ★ 원커맨드: 캘린더→생성→규제검출
+    ├── auto_approve.py             # 규제 통과분 자동 승인(의료·법률은 보류=사람 검수)
     ├── build_calendar.py           # 업체 프로필 → 30일 캘린더 자동 생성 (무료·규칙기반)
     ├── business.example.yaml        # 업체 프로필 입력
     ├── generate_content.py         # 캘린더 → 초안 일괄 생성 (dry-run 무료 / --live 유료)
@@ -50,7 +52,9 @@ content-agency/
 `run_pipeline.sh`(캘린더→생성→규제검출 자동) → `review.html`(승인)
 → `publish.py` → `output/publish/`(붙여넣기 발행) → `report.py`(월간 리포트).
 
-한 줄 실행: `cd automation && ./run_pipeline.sh --days 30`  (실제 생성은 `--live`, 비용 발생)
+전체 자동화 한 줄: `cd automation && ./run_all.sh --days 30 --live`
+→ 캘린더·생성·규제검출·자동승인·발행패키지·리포트까지 실행. 사람은 (a)의료·법률 보류분 검수 (b)플랫폼 게시 (c)영업만.
+(무료 확인은 `--live` 빼고 실행)
 
 배포: 저장소 루트 `.github/workflows/deploy-pages.yml` 이 `content-agency/` 를
 GitHub Pages 로 무료 배포한다 (Settings → Pages → Source: GitHub Actions).
