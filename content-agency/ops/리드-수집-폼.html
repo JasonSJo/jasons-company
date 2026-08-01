@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>무료 진단 신청 · 콘텐츠하다</title>
+<style>
+  :root{--brand:#3b5bff;--bg:#f6f7f9;--card:#fff;--fg:#14161a;--soft:#565d6b;--border:#e7e9ee}
+  @media(prefers-color-scheme:dark){:root{--bg:#0c0e13;--card:#151922;--fg:#f2f4f8;--soft:#aab2c2;--border:#242a36}}
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;
+    font-family:system-ui,-apple-system,"Malgun Gothic",sans-serif;background:var(--bg);color:var(--fg)}
+  .card{width:100%;max-width:520px;background:var(--card);border:1px solid var(--border);
+    border-radius:18px;padding:34px;box-shadow:0 20px 50px rgba(20,26,50,.12)}
+  h1{font-size:23px;margin:0 0 6px;letter-spacing:-.02em}
+  p.sub{margin:0 0 24px;color:var(--soft);font-size:15px}
+  label{display:block;font-weight:700;font-size:14px;margin:16px 0 6px}
+  input,select,textarea{width:100%;padding:12px 14px;border:1px solid var(--border);
+    border-radius:10px;background:transparent;color:var(--fg);font-size:15px;font-family:inherit}
+  input:focus,select:focus,textarea:focus{outline:2px solid var(--brand);border-color:var(--brand)}
+  textarea{min-height:88px;resize:vertical}
+  button{width:100%;margin-top:24px;padding:14px;border:none;border-radius:12px;background:var(--brand);
+    color:#fff;font-weight:800;font-size:16px;cursor:pointer}
+  button:hover{background:#1e34b8}
+  .ok{display:none;text-align:center;padding:20px 0}
+  .ok .big{font-size:40px}
+  .note{font-size:12.5px;color:var(--soft);margin-top:14px;text-align:center}
+</style>
+</head>
+<body>
+<div class="card">
+  <form id="f">
+    <h1>3분 무료 진단 신청</h1>
+    <p class="sub">업종·채널을 알려주시면 맞춤 콘텐츠 전략을 제안드립니다.</p>
+
+    <label for="name">담당자 이름 *</label>
+    <input id="name" required autocomplete="name"/>
+
+    <label for="biz">상호 / 브랜드 *</label>
+    <input id="biz" required/>
+
+    <label for="industry">업종 *</label>
+    <select id="industry" required>
+      <option value="">선택하세요</option>
+      <option>요식업 (음식점/카페)</option>
+      <option>병의원 (병원/치과/피부과/한의원)</option>
+      <option>뷰티 (미용실/네일/에스테틱)</option>
+      <option>전문서비스 (법률/세무/노무/부동산)</option>
+      <option>기타</option>
+    </select>
+
+    <label for="channel">현재 운영 중인 채널 (복수 가능)</label>
+    <input id="channel" placeholder="예: 네이버 플레이스, 인스타그램"/>
+
+    <label for="contact">연락처 (전화 또는 이메일) *</label>
+    <input id="contact" required/>
+
+    <label for="goal">가장 필요한 것</label>
+    <textarea id="goal" placeholder="예: 신규 방문 예약을 늘리고 싶어요"></textarea>
+
+    <button type="submit">무료 진단 신청하기</button>
+    <p class="note">제출 시 상담 목적의 연락에 동의하는 것으로 간주됩니다.</p>
+  </form>
+
+  <div class="ok" id="ok">
+    <div class="big">✅</div>
+    <h1>신청이 접수되었어요</h1>
+    <p class="sub">영업일 기준 1일 내 담당자가 연락드립니다.</p>
+    <p class="note" id="payload"></p>
+  </div>
+</div>
+
+<script>
+  // 데모: 제출 데이터를 구조화해 로컬에 보관(실서비스는 백엔드/구글폼/스프레드시트 연동으로 교체)
+  // ── 설정: 아래 LEAD_ENDPOINT 한 줄만 채우면 문의가 실제 백엔드로 전송됩니다. ──
+  //  · Google Apps Script(무료): ops/lead-backend.gs 배포 후 나온 웹앱 URL 붙여넣기
+  //  · Formspree(무료): https://formspree.io/f/xxxxxxx 형태의 엔드포인트
+  //  비워두면 로컬 저장 + 이메일 초안 폴백으로 동작합니다(백엔드 불필요).
+  const LEAD_ENDPOINT = "";              // 예: "https://script.google.com/macros/s/AKfy.../exec"
+  const FALLBACK_EMAIL = "ceo-jason@jasons-consulting.com";
+
+  const f = document.getElementById('f');
+  const btn = f.querySelector('button[type="submit"]');
+
+  async function sendLead(lead) {
+    // 1) 엔드포인트가 설정되어 있으면 실제 전송 (Apps Script/Formspree 모두 지원)
+    if (LEAD_ENDPOINT) {
+      const res = await fetch(LEAD_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Accept": "application/json" },
+        body: JSON.stringify(lead)
+      });
+      if (!res.ok) throw new Error("bad status " + res.status);
+      return "sent";
+    }
+    // 2) 폴백: 로컬 저장(테스트용) + 담당자 메일 초안 자동 오픈
+    try {
+      const all = JSON.parse(localStorage.getItem('leads') || '[]');
+      all.push(lead); localStorage.setItem('leads', JSON.stringify(all));
+    } catch (_) {}
+    const body = encodeURIComponent(
+      `상호: ${lead.biz}\n업종: ${lead.industry}\n담당자: ${lead.name}\n연락처: ${lead.contact}\n채널: ${lead.channel}\n필요사항: ${lead.goal}`
+    );
+    window.location.href = `mailto:${FALLBACK_EMAIL}?subject=${encodeURIComponent('무료 진단 신청 — ' + lead.biz)}&body=${body}`;
+    return "fallback";
+  }
+
+  f.addEventListener('submit', async e => {
+    e.preventDefault();
+    const lead = {
+      ts: new Date().toISOString(),
+      name: name.value, biz: biz.value, industry: industry.value,
+      channel: channel.value, contact: contact.value, goal: goal.value
+    };
+    btn.disabled = true; btn.textContent = '접수 중…';
+    try {
+      await sendLead(lead);
+      f.style.display = 'none';
+      document.getElementById('ok').style.display = 'block';
+      document.getElementById('payload').textContent = '접수: ' + lead.biz + ' · ' + lead.industry;
+    } catch (err) {
+      btn.disabled = false; btn.textContent = '무료 진단 신청하기';
+      alert('전송에 실패했어요. 잠시 후 다시 시도하거나 ' + FALLBACK_EMAIL + ' 로 문의해 주세요.');
+    }
+  });
+</script>
+</body>
+</html>

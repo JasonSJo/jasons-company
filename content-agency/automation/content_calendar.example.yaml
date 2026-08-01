@@ -1,0 +1,44 @@
+# 콘텐츠 캘린더 예시 — 각 항목이 콘텐츠 1건이 된다.
+# generate_content.py 가 이 목록을 순회하며 초안(dry-run) 또는 실제 콘텐츠(--live)를 만든다.
+# industry: 요식업 | 병의원 | 뷰티 | 전문서비스
+# channel:  blog | reels | review
+
+- industry: 요식업
+  channel: blog
+  brand: 성수 파스타랩
+  region: 성수동
+  strengths: 생면 파스타, 예약제 소규모 다이닝, 시즌 메뉴
+  target: 20~30대 데이트·모임 고객
+  topic: 성수동 파스타 맛집
+
+- industry: 요식업
+  channel: reels
+  brand: 성수 파스타랩
+  region: 성수동
+  strengths: 화덕 마무리 시그니처
+  target: 인스타 탐색 사용자
+  topic: 시그니처 트러플 파스타 30초 소개
+
+- industry: 병의원
+  channel: blog
+  brand: 밝은미소 치과
+  region: 판교
+  strengths: 디지털 임플란트, 무통 마취 시스템
+  target: 임플란트 상담을 고려하는 40~60대
+  topic: 임플란트 과정 단계별 정리
+
+- industry: 뷰티
+  channel: reels
+  brand: 라운드헤어
+  region: 연남동
+  strengths: 손상모 클리닉, 디자이너 브랜딩
+  target: 여름 손상모 고민 고객
+  topic: 여름 손상모 홈케어 3가지
+
+- industry: 전문서비스
+  channel: blog
+  brand: 한결 세무회계
+  region: 강남
+  strengths: 소상공인 종합소득세 전문
+  target: 개인사업자·프리랜서
+  topic: 종합소득세 신고 기한과 놓치기 쉬운 공제

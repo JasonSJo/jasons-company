@@ -1,0 +1,39 @@
+name: Deploy content-agency landing page
+
+# 랜딩페이지/리드 폼을 GitHub Pages 로 무료 배포한다.
+# 활성화: 저장소 Settings → Pages → Source = "GitHub Actions" 로 설정하면
+#         이 브랜치 push 시 자동 배포된다. (비용 발생 없음)
+
+on:
+  push:
+    branches: [main]
+    paths: ["content-agency/**", ".github/workflows/deploy-pages.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true   # Pages 미설정 시 워크플로우가 자동 활성화 시도
+      - name: Upload landing page
+        uses: actions/upload-pages-artifact@v3
+        with:
+          # content-agency/ 를 사이트 루트로 게시 → index.html 이 첫 화면
+          path: content-agency
+      - id: deployment
+        uses: actions/deploy-pages@v4

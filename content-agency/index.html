@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>콘텐츠하다 · 업종 전문 콘텐츠 대행</title>
+  <meta name="description" content="요식업·병의원·뷰티·전문서비스까지, 업종을 아는 팀이 만드는 콘텐츠 대행. 블로그·인스타·릴스·상세페이지·플레이스 리뷰까지 월 정액으로." />
+  <style>
+    :root{
+      --bg:#ffffff;
+      --bg-soft:#f6f7f9;
+      --bg-card:#ffffff;
+      --border:#e7e9ee;
+      --fg:#14161a;
+      --fg-soft:#565d6b;
+      --fg-mute:#8a92a1;
+      --brand:#3b5bff;
+      --brand-ink:#1e34b8;
+      --brand-soft:#eef1ff;
+      --accent:#00c2a8;
+      --warn:#ff7a45;
+      --shadow:0 1px 2px rgba(16,20,30,.06),0 8px 24px rgba(16,20,30,.06);
+      --shadow-lg:0 24px 60px rgba(20,26,50,.16);
+      --radius:16px;
+      --maxw:1120px;
+    }
+    @media (prefers-color-scheme: dark){
+      :root{
+        --bg:#0c0e13;
+        --bg-soft:#12151c;
+        --bg-card:#151922;
+        --border:#242a36;
+        --fg:#f2f4f8;
+        --fg-soft:#aab2c2;
+        --fg-mute:#7a8393;
+        --brand:#6f88ff;
+        --brand-ink:#aebcff;
+        --brand-soft:#1a2140;
+        --accent:#2fe0c6;
+        --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 30px rgba(0,0,0,.35);
+        --shadow-lg:0 30px 70px rgba(0,0,0,.5);
+      }
+    }
+    *{box-sizing:border-box}
+    html{scroll-behavior:smooth}
+    body{
+      margin:0;
+      font-family:"Pretendard",system-ui,-apple-system,"Segoe UI","Malgun Gothic","Apple SD Gothic Neo",sans-serif;
+      background:var(--bg);
+      color:var(--fg);
+      line-height:1.6;
+      -webkit-font-smoothing:antialiased;
+      letter-spacing:-.01em;
+    }
+    a{color:inherit;text-decoration:none}
+    img{max-width:100%}
+    .wrap{max-width:var(--maxw);margin:0 auto;padding:0 24px}
+    .eyebrow{
+      display:inline-flex;align-items:center;gap:8px;
+      font-size:13px;font-weight:700;letter-spacing:.02em;
+      color:var(--brand-ink);background:var(--brand-soft);
+      padding:6px 12px;border-radius:999px;
+    }
+    .btn{
+      display:inline-flex;align-items:center;justify-content:center;gap:8px;
+      font-weight:700;font-size:15px;border-radius:12px;
+      padding:13px 22px;cursor:pointer;border:1px solid transparent;
+      transition:transform .12s ease, box-shadow .12s ease, background .12s ease;
+    }
+    .btn:active{transform:translateY(1px)}
+    .btn-primary{background:var(--brand);color:#fff;box-shadow:0 8px 20px rgba(59,91,255,.28)}
+    .btn-primary:hover{background:var(--brand-ink)}
+    .btn-ghost{background:transparent;color:var(--fg);border-color:var(--border)}
+    .btn-ghost:hover{background:var(--bg-soft)}
+
+    /* NAV */
+    header.nav{position:sticky;top:0;z-index:50;background:color-mix(in srgb,var(--bg) 82%, transparent);backdrop-filter:blur(12px);border-bottom:1px solid var(--border)}
+    .nav-in{display:flex;align-items:center;justify-content:space-between;height:66px}
+    .logo{display:flex;align-items:center;gap:10px;font-weight:800;font-size:18px}
+    .logo .mark{width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,var(--brand),var(--accent));display:grid;place-items:center;color:#fff;font-weight:900}
+    .nav-links{display:flex;gap:26px;align-items:center;font-size:15px;color:var(--fg-soft);font-weight:600}
+    .nav-links a:hover{color:var(--fg)}
+    .nav-cta{display:flex;gap:10px;align-items:center}
+    @media(max-width:860px){.nav-links{display:none}.nav-cta .btn-ghost{display:none}}
+
+    /* HERO */
+    .hero{position:relative;overflow:hidden;padding:84px 0 72px}
+    .hero::before{content:"";position:absolute;inset:0;background:
+      radial-gradient(600px 340px at 82% -8%, color-mix(in srgb,var(--brand) 22%, transparent), transparent 70%),
+      radial-gradient(520px 320px at 6% 12%, color-mix(in srgb,var(--accent) 16%, transparent), transparent 70%);
+      pointer-events:none}
+    .hero-grid{display:grid;grid-template-columns:1.05fr .95fr;gap:56px;align-items:center;position:relative}
+    .hero h1{font-size:clamp(32px,4.6vw,54px);line-height:1.14;font-weight:800;margin:18px 0 18px;letter-spacing:-.03em}
+    .hero h1 .hl{background:linear-gradient(120deg,var(--brand),var(--accent));-webkit-background-clip:text;background-clip:text;color:transparent}
+    .hero p.lead{font-size:19px;color:var(--fg-soft);max-width:540px;margin:0 0 30px}
+    .hero-cta{display:flex;gap:12px;flex-wrap:wrap}
+    .hero-trust{display:flex;gap:26px;margin-top:34px;flex-wrap:wrap}
+    .hero-trust div{display:flex;flex-direction:column}
+    .hero-trust b{font-size:26px;font-weight:800;letter-spacing:-.02em}
+    .hero-trust span{font-size:13px;color:var(--fg-mute)}
+    @media(max-width:860px){.hero-grid{grid-template-columns:1fr;gap:36px}.hero{padding:56px 0 48px}}
+
+    /* HERO CARD (mock deliverable) */
+    .mock{background:var(--bg-card);border:1px solid var(--border);border-radius:20px;box-shadow:var(--shadow-lg);padding:20px;transform:rotate(-1deg)}
+    .mock .bar{display:flex;gap:6px;margin-bottom:14px}
+    .mock .bar i{width:11px;height:11px;border-radius:50%;background:var(--border)}
+    .mock .post{display:flex;gap:12px;padding:12px;border:1px solid var(--border);border-radius:12px;margin-bottom:10px;background:var(--bg)}
+    .mock .thumb{width:52px;height:52px;border-radius:10px;flex:none;background:linear-gradient(135deg,var(--brand-soft),color-mix(in srgb,var(--accent) 30%,transparent))}
+    .mock .post h5{margin:0 0 4px;font-size:14px}
+    .mock .post p{margin:0;font-size:12.5px;color:var(--fg-mute)}
+    .mock .tag{font-size:11px;font-weight:700;color:var(--brand-ink);background:var(--brand-soft);padding:2px 8px;border-radius:6px;align-self:flex-start}
+
+    /* LOGO STRIP */
+    .strip{border-top:1px solid var(--border);border-bottom:1px solid var(--border);background:var(--bg-soft)}
+    .strip-in{display:flex;align-items:center;gap:34px;justify-content:center;flex-wrap:wrap;padding:22px 0;color:var(--fg-mute);font-weight:700;font-size:15px}
+    .strip-in span:first-child{color:var(--fg-soft);font-size:13px;font-weight:600}
+
+    section{padding:82px 0}
+    .sec-head{max-width:680px;margin:0 auto 46px;text-align:center}
+    .sec-head h2{font-size:clamp(26px,3.4vw,38px);font-weight:800;letter-spacing:-.03em;margin:14px 0 12px;line-height:1.2}
+    .sec-head p{font-size:17px;color:var(--fg-soft);margin:0}
+
+    /* PROBLEM */
+    .prob-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
+    .prob{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:26px;box-shadow:var(--shadow)}
+    .prob .ic{font-size:26px}
+    .prob h3{font-size:18px;margin:14px 0 8px}
+    .prob p{margin:0;color:var(--fg-soft);font-size:15px}
+    @media(max-width:860px){.prob-grid{grid-template-columns:1fr}}
+
+    /* SERVICES */
+    .svc-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
+    .svc{position:relative;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:26px;box-shadow:var(--shadow);transition:transform .15s,box-shadow .15s}
+    .svc:hover{transform:translateY(-4px);box-shadow:var(--shadow-lg)}
+    .svc .ic{width:46px;height:46px;border-radius:12px;display:grid;place-items:center;font-size:22px;background:var(--brand-soft)}
+    .svc h3{font-size:19px;margin:16px 0 8px}
+    .svc p{margin:0;color:var(--fg-soft);font-size:15px}
+    .svc ul{margin:14px 0 0;padding:0;list-style:none;font-size:14px;color:var(--fg-soft)}
+    .svc li{padding:4px 0 4px 22px;position:relative}
+    .svc li::before{content:"✓";position:absolute;left:0;color:var(--accent);font-weight:800}
+    @media(max-width:860px){.svc-grid{grid-template-columns:1fr}}
+
+    /* INDUSTRIES */
+    .ind-tabs{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-bottom:34px}
+    .ind-tab{cursor:pointer;border:1px solid var(--border);background:var(--bg-card);border-radius:999px;padding:10px 20px;font-weight:700;font-size:15px;color:var(--fg-soft);transition:all .12s}
+    .ind-tab[aria-selected="true"]{background:var(--brand);color:#fff;border-color:var(--brand);box-shadow:0 8px 20px rgba(59,91,255,.25)}
+    .ind-panel{display:none;background:var(--bg-card);border:1px solid var(--border);border-radius:20px;box-shadow:var(--shadow);overflow:hidden}
+    .ind-panel[data-active="true"]{display:grid;grid-template-columns:1fr 1fr}
+    .ind-copy{padding:38px}
+    .ind-copy h3{font-size:24px;margin:0 0 8px;letter-spacing:-.02em}
+    .ind-copy .sub{color:var(--brand-ink);font-weight:700;font-size:14px;margin-bottom:16px}
+    .ind-copy p{color:var(--fg-soft);margin:0 0 18px}
+    .ind-copy .chips{display:flex;gap:8px;flex-wrap:wrap}
+    .chip{font-size:13px;font-weight:600;background:var(--bg-soft);border:1px solid var(--border);border-radius:8px;padding:6px 11px;color:var(--fg-soft)}
+    .ind-metric{background:linear-gradient(160deg,var(--brand-soft),var(--bg-soft));padding:38px;display:flex;flex-direction:column;justify-content:center;gap:18px;border-left:1px solid var(--border)}
+    .metric-row{display:flex;align-items:baseline;gap:12px}
+    .metric-row b{font-size:34px;font-weight:800;color:var(--brand-ink);letter-spacing:-.02em}
+    .metric-row span{color:var(--fg-soft);font-size:14px}
+    @media(max-width:860px){.ind-panel[data-active="true"]{grid-template-columns:1fr}.ind-metric{border-left:none;border-top:1px solid var(--border)}}
+
+    /* PROCESS */
+    .proc{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;counter-reset:step}
+    .step{position:relative;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:24px 20px;box-shadow:var(--shadow)}
+    .step::before{counter-increment:step;content:"0" counter(step);font-size:14px;font-weight:800;color:#fff;background:var(--brand);width:34px;height:34px;border-radius:9px;display:grid;place-items:center}
+    .step h4{margin:14px 0 6px;font-size:16px}
+    .step p{margin:0;font-size:13.5px;color:var(--fg-mute)}
+    @media(max-width:860px){.proc{grid-template-columns:1fr 1fr}}
+
+    /* PRICING */
+    #pricing{background:var(--bg-soft)}
+    .price-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;align-items:stretch}
+    .plan{display:flex;flex-direction:column;background:var(--bg-card);border:1px solid var(--border);border-radius:20px;padding:30px 26px;box-shadow:var(--shadow)}
+    .plan.pop{border:2px solid var(--brand);box-shadow:var(--shadow-lg);position:relative}
+    .plan.pop .ribbon{position:absolute;top:-13px;left:50%;transform:translateX(-50%);background:var(--brand);color:#fff;font-size:12px;font-weight:800;padding:5px 14px;border-radius:999px}
+    .plan h3{margin:0;font-size:19px}
+    .plan .desc{color:var(--fg-mute);font-size:14px;margin:6px 0 18px;min-height:40px}
+    .plan .amt{font-size:34px;font-weight:800;letter-spacing:-.02em}
+    .plan .amt small{font-size:15px;font-weight:600;color:var(--fg-mute)}
+    .plan ul{list-style:none;padding:0;margin:22px 0;flex:1}
+    .plan li{padding:8px 0 8px 24px;position:relative;font-size:14.5px;color:var(--fg-soft);border-top:1px dashed var(--border)}
+    .plan li:first-child{border-top:none}
+    .plan li::before{content:"✓";position:absolute;left:0;color:var(--accent);font-weight:800}
+    .plan .btn{width:100%}
+    .price-note{text-align:center;color:var(--fg-mute);font-size:13.5px;margin-top:22px}
+    @media(max-width:860px){.price-grid{grid-template-columns:1fr}}
+
+    /* FAQ */
+    .faq{max-width:760px;margin:0 auto}
+    details{border:1px solid var(--border);border-radius:12px;background:var(--bg-card);margin-bottom:12px;overflow:hidden}
+    details summary{cursor:pointer;list-style:none;padding:20px 22px;font-weight:700;font-size:16.5px;display:flex;justify-content:space-between;align-items:center;gap:16px}
+    details summary::-webkit-details-marker{display:none}
+    details summary::after{content:"+";font-size:22px;color:var(--brand);font-weight:400;transition:transform .2s}
+    details[open] summary::after{transform:rotate(45deg)}
+    details .body{padding:0 22px 20px;color:var(--fg-soft);font-size:15px}
+
+    /* CTA */
+    .cta{position:relative;overflow:hidden;background:linear-gradient(135deg,var(--brand),var(--brand-ink));color:#fff;border-radius:26px;padding:56px 40px;text-align:center;box-shadow:var(--shadow-lg)}
+    .cta::after{content:"";position:absolute;inset:0;background:radial-gradient(400px 260px at 85% 0%, rgba(255,255,255,.18),transparent 70%);pointer-events:none}
+    .cta h2{font-size:clamp(26px,3.4vw,36px);margin:0 0 12px;font-weight:800;letter-spacing:-.02em}
+    .cta p{margin:0 0 26px;font-size:17px;opacity:.92}
+    .cta .btn-primary{background:#fff;color:var(--brand-ink)}
+    .cta .btn-primary:hover{background:#eef1ff}
+    .cta .btn-ghost{border-color:rgba(255,255,255,.5);color:#fff}
+    .cta .btn-ghost:hover{background:rgba(255,255,255,.12)}
+
+    /* FOOTER */
+    footer{padding:52px 0 40px;border-top:1px solid var(--border);color:var(--fg-mute);font-size:14px}
+    .foot-in{display:flex;justify-content:space-between;gap:24px;flex-wrap:wrap}
+    .foot-links{display:flex;gap:22px;flex-wrap:wrap}
+    .foot-links a:hover{color:var(--fg)}
+  </style>
+</head>
+<body>
+
+  <!-- NAV -->
+  <header class="nav">
+    <div class="wrap nav-in">
+      <a class="logo" href="#top"><span class="mark">C</span>콘텐츠하다</a>
+      <nav class="nav-links">
+        <a href="#service">서비스</a>
+        <a href="#industry">업종별 특화</a>
+        <a href="#process">진행 방식</a>
+        <a href="#pricing">요금제</a>
+        <a href="#faq">FAQ</a>
+      </nav>
+      <div class="nav-cta">
+        <a class="btn btn-ghost" href="#pricing">요금 보기</a>
+        <a class="btn btn-primary" href="#contact">무료 상담 신청</a>
+      </div>
+    </div>
+  </header>
+
+  <!-- HERO -->
+  <section class="hero" id="top">
+    <div class="wrap hero-grid">
+      <div>
+        <span class="eyebrow">● 업종을 아는 콘텐츠 팀</span>
+        <h1>우리 <span class="hl">업종</span>을 아는 팀이<br>콘텐츠를 대신 만듭니다</h1>
+        <p class="lead">요식업·병의원·뷰티·전문서비스까지. 업종별 전담 에디터가 블로그, 인스타그램, 릴스, 상세페이지, 플레이스 리뷰까지 월 정액으로 운영합니다. 사장님은 본업에만 집중하세요.</p>
+        <div class="hero-cta">
+          <a class="btn btn-primary" href="#contact">3분 무료 진단 신청 →</a>
+          <a class="btn btn-ghost" href="#industry">우리 업종 사례 보기</a>
+        </div>
+        <div class="hero-trust">
+          <div><b>320+</b><span>누적 운영 매장·병원</span></div>
+          <div><b>18개</b><span>전문 업종 커버</span></div>
+          <div><b>4.9<small style="font-size:15px">/5</small></b><span>재계약 만족도</span></div>
+        </div>
+      </div>
+      <div>
+        <div class="mock">
+          <div class="bar"><i></i><i></i><i></i></div>
+          <div class="post"><div class="thumb"></div><div><span class="tag">요식업 · 블로그</span><h5>“웨이팅 30분, 그래도 가는 이유”</h5><p>검색 상위 노출 · 예약 문의 3배</p></div></div>
+          <div class="post"><div class="thumb"></div><div><span class="tag">피부과 · 릴스</span><h5>“레이저 후 관리 3가지”</h5><p>도달 4.2만 · 상담 예약 47건</p></div></div>
+          <div class="post"><div class="thumb"></div><div><span class="tag">미용실 · 인스타</span><h5>“여름 손상모 클리닉 전후”</h5><p>저장 890 · 신규 방문 예약↑</p></div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- LOGO STRIP -->
+  <div class="strip">
+    <div class="wrap strip-in">
+      <span>이런 업종과 함께합니다</span>
+      <span>🍽 요식업</span><span>🏥 병의원</span><span>💇 뷰티</span><span>⚖️ 법률·세무</span><span>🏠 부동산</span><span>🏋️ 피트니스</span>
+    </div>
+  </div>
+
+  <!-- PROBLEM -->
+  <section id="why">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="eyebrow">왜 업종 전문인가</span>
+        <h2>일반 대행사가 못 채우는 빈칸</h2>
+        <p>콘텐츠는 넘치는데 매출로 이어지지 않는 진짜 이유는, 우리 업종의 언어와 규제를 모르는 채 찍어내기 때문입니다.</p>
+      </div>
+      <div class="prob-grid">
+        <div class="prob">
+          <div class="ic">🌀</div>
+          <h3>업종을 모르는 외주</h3>
+          <p>메뉴·시술·전문용어를 모르니 매번 자료를 설명해야 하고, 결과물은 늘 겉돕니다. 검수에 더 많은 시간이 듭니다.</p>
+        </div>
+        <div class="prob">
+          <div class="ic">⚠️</div>
+          <h3>규제·심의 리스크</h3>
+          <p>의료·법률 광고는 표현 하나로 행정처분 대상. 업종 가이드라인을 모르는 콘텐츠는 오히려 위험 요소가 됩니다.</p>
+        </div>
+        <div class="prob">
+          <div class="ic">⏳</div>
+          <h3>사장님이 결국 다 함</h3>
+          <p>기획·촬영·업로드까지 챙기다 보면 본업 시간이 사라집니다. 맡겼는데 더 바빠지는 역설.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SERVICES -->
+  <section id="service" style="background:var(--bg-soft)">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="eyebrow">서비스</span>
+        <h2>기획부터 발행·리포트까지, 원스톱</h2>
+        <p>채널 하나만이 아니라, 우리 업종의 고객 여정 전체를 콘텐츠로 설계합니다.</p>
+      </div>
+      <div class="svc-grid">
+        <div class="svc">
+          <div class="ic">📝</div>
+          <h3>블로그·검색 콘텐츠</h3>
+          <p>네이버·구글 검색 상위 노출을 노린 정보성 글. 업종 키워드 리서치 기반.</p>
+          <ul><li>월 8~16건 발행</li><li>키워드·경쟁사 분석</li><li>플레이스 연동 최적화</li></ul>
+        </div>
+        <div class="svc">
+          <div class="ic">📸</div>
+          <h3>인스타그램·릴스</h3>
+          <p>피드·릴스 기획과 카피, 촬영 가이드까지. 저장·공유되는 콘텐츠 설계.</p>
+          <ul><li>피드 그리드 기획</li><li>릴스 대본·자막</li><li>해시태그·업로드 대행</li></ul>
+        </div>
+        <div class="svc">
+          <div class="ic">🖼️</div>
+          <h3>상세페이지·랜딩</h3>
+          <p>예약·주문 전환을 끌어올리는 상세페이지와 이벤트 랜딩 제작.</p>
+          <ul><li>전환 카피라이팅</li><li>디자인·편집 포함</li><li>A/B 문구 제안</li></ul>
+        </div>
+        <div class="svc">
+          <div class="ic">⭐</div>
+          <h3>리뷰·플레이스 관리</h3>
+          <p>영수증 리뷰 유도, 답글 작성, 플레이스 정보 최적화로 신뢰도 관리.</p>
+          <ul><li>리뷰 답글 대행</li><li>플레이스 SEO</li><li>부정 리뷰 대응 가이드</li></ul>
+        </div>
+        <div class="svc">
+          <div class="ic">🎬</div>
+          <h3>숏폼·촬영 디렉팅</h3>
+          <p>현장 촬영이 어려운 매장을 위한 원격 촬영 가이드와 편집 대행.</p>
+          <ul><li>촬영 콘티 제공</li><li>영상 편집·자막</li><li>월 4~8편</li></ul>
+        </div>
+        <div class="svc">
+          <div class="ic">📊</div>
+          <h3>성과 리포트</h3>
+          <p>노출·유입·문의·예약을 월간 리포트로. 다음 달 전략까지 제안.</p>
+          <ul><li>채널별 성과 대시보드</li><li>월간 전략 미팅</li><li>개선 액션 제안</li></ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- INDUSTRIES -->
+  <section id="industry">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="eyebrow">업종별 특화</span>
+        <h2>업종마다 전담팀이 다릅니다</h2>
+        <p>업종별로 검증된 콘텐츠 플레이북과 규제 체크리스트를 갖춘 전담 에디터가 배정됩니다.</p>
+      </div>
+
+      <div class="ind-tabs" role="tablist">
+        <button class="ind-tab" role="tab" aria-selected="true" data-tab="food">🍽 요식업</button>
+        <button class="ind-tab" role="tab" aria-selected="false" data-tab="clinic">🏥 병의원</button>
+        <button class="ind-tab" role="tab" aria-selected="false" data-tab="beauty">💇 뷰티</button>
+        <button class="ind-tab" role="tab" aria-selected="false" data-tab="pro">⚖️ 전문서비스</button>
+      </div>
+
+      <div class="ind-panel" data-panel="food" data-active="true">
+        <div class="ind-copy">
+          <div class="sub">요식업 · 카페 · 프랜차이즈</div>
+          <h3>웨이팅을 만드는 콘텐츠</h3>
+          <p>메뉴의 강점을 검색·SNS 언어로 번역합니다. 시즌 메뉴 런칭, 배달앱 상세, 플레이스 리뷰까지 매출 동선 전체를 커버합니다.</p>
+          <div class="chips"><span class="chip">시그니처 메뉴 스토리</span><span class="chip">배달앱 상세</span><span class="chip">영수증 리뷰 유도</span><span class="chip">플레이스 상위노출</span></div>
+        </div>
+        <div class="ind-metric">
+          <div class="metric-row"><b>+212%</b><span>네이버 플레이스 예약 문의</span></div>
+          <div class="metric-row"><b>×3.1</b><span>블로그 유입 검색량</span></div>
+          <div class="metric-row"><b>3개월</b><span>평균 성과 도달 기간</span></div>
+        </div>
+      </div>
+
+      <div class="ind-panel" data-panel="clinic" data-active="false">
+        <div class="ind-copy">
+          <div class="sub">병원 · 치과 · 피부과 · 한의원</div>
+          <h3>심의를 통과하는 신뢰 콘텐츠</h3>
+          <p>의료광고 심의 가이드라인을 아는 팀이 작성합니다. 과장 없는 정보성 콘텐츠로 검색 신뢰와 상담 예약을 동시에 잡습니다.</p>
+          <div class="chips"><span class="chip">의료광고 심의 대응</span><span class="chip">시술 정보 콘텐츠</span><span class="chip">전후 관리 가이드</span><span class="chip">상담 예약 랜딩</span></div>
+        </div>
+        <div class="ind-metric">
+          <div class="metric-row"><b>+47건</b><span>월 상담 예약 (릴스 1편)</span></div>
+          <div class="metric-row"><b>0건</b><span>심의 반려·행정처분</span></div>
+          <div class="metric-row"><b>4.2만</b><span>평균 콘텐츠 도달</span></div>
+        </div>
+      </div>
+
+      <div class="ind-panel" data-panel="beauty" data-active="false">
+        <div class="ind-copy">
+          <div class="sub">미용실 · 네일 · 에스테틱 · 왁싱</div>
+          <h3>저장·공유되는 뷰티 콘텐츠</h3>
+          <p>전후 비교, 홈케어 팁, 시술 과정 숏폼으로 팔로워를 예약으로 전환합니다. 재방문을 부르는 콘텐츠 루틴을 설계합니다.</p>
+          <div class="chips"><span class="chip">전후 비교 릴스</span><span class="chip">홈케어 카드뉴스</span><span class="chip">예약 이벤트</span><span class="chip">디자이너 브랜딩</span></div>
+        </div>
+        <div class="ind-metric">
+          <div class="metric-row"><b>+890</b><span>월 콘텐츠 저장 수</span></div>
+          <div class="metric-row"><b>+38%</b><span>신규 예약 방문</span></div>
+          <div class="metric-row"><b>2배</b><span>인스타 팔로워 성장</span></div>
+        </div>
+      </div>
+
+      <div class="ind-panel" data-panel="pro" data-active="false">
+        <div class="ind-copy">
+          <div class="sub">법률 · 세무 · 노무 · 부동산</div>
+          <h3>전문성을 증명하는 콘텐츠</h3>
+          <p>어려운 전문 지식을 검색 수요에 맞춘 쉬운 콘텐츠로. 신뢰 기반 상담 유입을 만들고 광고 규정을 준수합니다.</p>
+          <div class="chips"><span class="chip">사례 기반 칼럼</span><span class="chip">FAQ 검색 콘텐츠</span><span class="chip">상담 예약 퍼널</span><span class="chip">변호사법·광고규정 준수</span></div>
+        </div>
+        <div class="ind-metric">
+          <div class="metric-row"><b>×2.6</b><span>홈페이지 검색 유입</span></div>
+          <div class="metric-row"><b>+31건</b><span>월 상담 신청</span></div>
+          <div class="metric-row"><b>Top 3</b><span>주요 키워드 검색순위</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PROCESS -->
+  <section id="process" style="background:var(--bg-soft)">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="eyebrow">진행 방식</span>
+        <h2>신청 후 7일이면 첫 콘텐츠</h2>
+        <p>사장님이 하실 일은 딱 하나, 처음 진단 미팅뿐입니다. 이후는 전담팀이 굴립니다.</p>
+      </div>
+      <div class="proc">
+        <div class="step"><h4>무료 진단</h4><p>업종·경쟁사·현재 채널 분석. 30분 온라인 미팅.</p></div>
+        <div class="step"><h4>전략 설계</h4><p>업종 플레이북 기반 월간 콘텐츠 캘린더 제안.</p></div>
+        <div class="step"><h4>전담팀 배정</h4><p>업종 전문 에디터·디자이너 매칭.</p></div>
+        <div class="step"><h4>제작·발행</h4><p>검수 1회 후 발행. 채팅으로 실시간 소통.</p></div>
+        <div class="step"><h4>리포트·개선</h4><p>월간 성과 리포트와 다음 달 전략 미팅.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PRICING -->
+  <section id="pricing">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="eyebrow">요금제</span>
+        <h2>매장·병원 규모에 맞춘 월 정액</h2>
+        <p>계약 기간 3개월부터. 부가세 별도, 채널·건수는 협의로 조정 가능합니다.</p>
+      </div>
+      <div class="price-grid">
+        <div class="plan">
+          <h3>스타터</h3>
+          <p class="desc">1인 매장·소규모, 핵심 채널부터 시작</p>
+          <div class="amt">49<small>만원 / 월</small></div>
+          <ul>
+            <li>블로그 월 8건</li>
+            <li>인스타 피드 월 8건</li>
+            <li>플레이스 리뷰 답글 관리</li>
+            <li>월간 성과 리포트</li>
+            <li>채팅 소통 (평일)</li>
+          </ul>
+          <a class="btn btn-ghost" href="#contact">문의하기</a>
+        </div>
+        <div class="plan pop">
+          <span class="ribbon">가장 많이 선택</span>
+          <h3>프로</h3>
+          <p class="desc">성장기 매장·병원, 멀티 채널 운영</p>
+          <div class="amt">89<small>만원 / 월</small></div>
+          <ul>
+            <li>블로그 월 12건</li>
+            <li>인스타 피드 + 릴스 월 12건</li>
+            <li>상세페이지·이벤트 랜딩 1건</li>
+            <li>리뷰·플레이스 최적화</li>
+            <li>월간 전략 미팅</li>
+            <li>업종 규제 검수 포함</li>
+          </ul>
+          <a class="btn btn-primary" href="#contact">무료 상담 신청</a>
+        </div>
+        <div class="plan">
+          <h3>프리미엄</h3>
+          <p class="desc">다지점·브랜드, 촬영·영상까지 풀케어</p>
+          <div class="amt">149<small>만원~ / 월</small></div>
+          <ul>
+            <li>블로그 월 16건+</li>
+            <li>인스타·릴스·숏폼 월 20건+</li>
+            <li>촬영 디렉팅·영상 편집</li>
+            <li>상세페이지 무제한 개선</li>
+            <li>전담 매니저 배정</li>
+            <li>주간 리포트·긴급 대응</li>
+          </ul>
+          <a class="btn btn-ghost" href="#contact">맞춤 견적 받기</a>
+        </div>
+      </div>
+      <p class="price-note">※ 표시 금액은 예시 기준이며, 업종·채널·발행량에 따라 견적이 조정됩니다. 첫 달 성과가 없으면 다음 달 요금 50% 환급 보장.</p>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section id="faq">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="eyebrow">자주 묻는 질문</span>
+        <h2>궁금한 점을 미리 모았어요</h2>
+      </div>
+      <div class="faq">
+        <details open>
+          <summary>제 업종은 특수한데 대응이 될까요?</summary>
+          <div class="body">현재 18개 업종의 전용 콘텐츠 플레이북을 운영합니다. 목록에 없는 업종도 무료 진단에서 콘텐츠 방향과 규제 리스크를 먼저 점검한 뒤, 가능 여부를 솔직하게 알려드립니다.</div>
+        </details>
+        <details>
+          <summary>의료·법률처럼 광고 규제가 엄격한데 괜찮나요?</summary>
+          <div class="body">의료광고 심의 가이드라인, 변호사법·세무사법 광고 규정을 숙지한 전담팀이 작성하고, 발행 전 규제 검수를 거칩니다. 프로 요금제 이상은 규제 검수가 기본 포함됩니다.</div>
+        </details>
+        <details>
+          <summary>사진·영상 소스가 없어도 되나요?</summary>
+          <div class="body">촬영 콘티와 가이드를 드려 매장에서 스마트폰으로 촬영하실 수 있게 돕고, 편집은 저희가 합니다. 프리미엄 요금제는 원격 촬영 디렉팅과 전문 편집이 포함됩니다.</div>
+        </details>
+        <details>
+          <summary>계약 기간과 해지 조건은요?</summary>
+          <div class="body">기본 3개월 단위 계약이며 이후 월 단위 연장입니다. 첫 달 성과가 목표에 미달하면 다음 달 요금 50%를 환급합니다. 해지는 다음 결제 7일 전까지 알려주시면 됩니다.</div>
+        </details>
+        <details>
+          <summary>성과는 어떻게 확인하나요?</summary>
+          <div class="body">노출·유입·저장·문의·예약 지표를 채널별 월간 리포트로 제공하고, 월 1회 전략 미팅에서 다음 달 개선안을 함께 정합니다.</div>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA / CONTACT -->
+  <section id="contact">
+    <div class="wrap">
+      <div class="cta">
+        <h2>우리 업종, 지금 콘텐츠로 검증해 보세요</h2>
+        <p>3분 신청 → 30분 무료 진단 미팅 → 맞춤 콘텐츠 전략 제안. 부담 없이 시작하세요.</p>
+        <div class="hero-cta" style="justify-content:center">
+          <a class="btn btn-primary" href="https://open.kakao.com/o/sZ71xB5d" target="_blank" rel="noopener">카카오톡 무료 상담 →</a>
+          <a class="btn btn-ghost" href="mailto:ceo-jason@jasons-consulting.com?subject=콘텐츠%20대행%20문의">이메일 문의</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FOOTER -->
+  <footer>
+    <div class="wrap foot-in">
+      <div>
+        <div class="logo" style="font-size:16px;margin-bottom:8px"><span class="mark" style="width:26px;height:26px;font-size:14px">C</span>콘텐츠하다</div>
+        <div>업종 전문 콘텐츠 대행 · 사장님은 본업에, 콘텐츠는 저희에게.</div>
+        <div style="margin-top:8px">© 2026 콘텐츠하다 (ContentHada). All rights reserved.</div>
+      </div>
+      <div class="foot-links">
+        <a href="#service">서비스</a>
+        <a href="#industry">업종별 특화</a>
+        <a href="#pricing">요금제</a>
+        <a href="#faq">FAQ</a>
+        <a href="#contact">문의</a>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    // Industry tab switcher
+    const tabs = document.querySelectorAll('.ind-tab');
+    const panels = document.querySelectorAll('.ind-panel');
+    tabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        tabs.forEach(t => t.setAttribute('aria-selected', 'false'));
+        tab.setAttribute('aria-selected', 'true');
+        const key = tab.dataset.tab;
+        panels.forEach(p => p.setAttribute('data-active', p.dataset.panel === key ? 'true' : 'false'));
+      });
+    });
+  </script>
+</body>
+</html>
