@@ -3,11 +3,11 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>상권 분석 콘솔 · 카페 프랜차이즈</title>
-<meta name="description" content="카페 프랜차이즈 출점 후보지의 상권을 점수화하고 매출·손익·투자회수를 추정하는 운영 콘솔. 설치 없이 브라우저에서 동작합니다."/>
+<title>심의 콘솔 · 점포개발</title>
+<meta name="description" content="점포개발 심의 알고리즘 v1.0 의 산출물을 읽는 사내 콘솔. 판정·근거·미검증 계수를 한 화면에서 확인하고, M5 판정 산술을 협상 가정으로 다시 계산합니다."/>
 <meta name="robots" content="noindex"/>
 <meta name="color-scheme" content="light"/>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%233b5bff'/%3E%3Ctext x='16' y='23' font-family='system-ui,sans-serif' font-size='19' text-anchor='middle'%3E%E2%98%95%3C/text%3E%3C/svg%3E"/>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23efeae0'/%3E%3Ccircle cx='16' cy='16' r='11' fill='none' stroke='%239a3b1b' stroke-width='1.4' stroke-dasharray='3 3'/%3E%3Ccircle cx='16' cy='16' r='3.6' fill='%239a3b1b'/%3E%3C/svg%3E"/>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
 <link href="https://fonts.googleapis.com/css2?family=Hahmlet:wght@500;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap" rel="stylesheet"/>
@@ -18,123 +18,33 @@
 <header class="top">
   <div class="wrap">
     <div class="top-in">
-      <a class="logo" href="../index.html"><span class="mark">◎</span>상권 분석<small>카페 프랜차이즈 출점 심사</small></a>
+      <a class="logo" href="../index.html"><span class="mark">◎</span>심의 콘솔<small>점포개발 · 사내 한정</small></a>
       <div class="top-actions">
-        <button class="sm ghost" id="btn-demo">데모 데이터</button>
-        <button class="sm ghost" id="btn-backup">백업 내보내기</button>
-        <button class="sm ghost" id="btn-restore">복원</button>
-        <button class="sm ghost danger" id="btn-reset">전체 초기화</button>
+        <button class="sm ghost" id="btn-demo">예시 결과</button>
       </div>
     </div>
     <div class="tabs" role="tablist">
-      <button class="tab" role="tab" data-tab="dash" aria-selected="true">대시보드</button>
+      <button class="tab" role="tab" data-tab="status" aria-selected="true">심의 현황</button>
       <button class="tab" role="tab" data-tab="sites" aria-selected="false">후보지<span class="pill" id="pill-sites">0</span></button>
-      <button class="tab" role="tab" data-tab="map" aria-selected="false">상권 지도<span class="pill" id="pill-map">0</span></button>
       <button class="tab" role="tab" data-tab="sim" aria-selected="false">손익 시뮬</button>
-      <button class="tab" role="tab" data-tab="report" aria-selected="false">리포트</button>
-      <button class="tab" role="tab" data-tab="settings" aria-selected="false">브랜드 설정</button>
+      <button class="tab" role="tab" data-tab="data" aria-selected="false">데이터·계수</button>
     </div>
   </div>
 </header>
 
 <main class="wrap">
-
-  <!-- ══ 대시보드 ══ -->
-  <section id="panel-dash" class="panel">
-    <div class="panel-head">
-      <div>
-        <h2>대시보드</h2>
-        <p>출점 후보지의 상권 점수·추정 손익을 한눈에. 모든 데이터는 이 브라우저에만 저장되며 서버로 전송되지 않습니다.</p>
-      </div>
-    </div>
-    <div class="grid g4" id="kpis"></div>
-    <div id="dash-body" style="margin-top:14px"></div>
-  </section>
-
-  <!-- ══ 후보지 ══ -->
-  <section id="panel-sites" class="panel hide">
-    <div class="panel-head">
-      <div>
-        <h2>후보지</h2>
-        <p>후보지 CSV 를 올리면 배후수요·유동인구·경쟁·접근성·비용 100점 만점으로 채점하고
-           추정 매출·손익까지 계산합니다. 점수 로직은 <code>analysis/score_sites.py</code> 와 동일합니다.</p>
-      </div>
-      <div class="acts">
-        <button class="sm" id="s-add">직접 추가</button>
-        <button class="sm" id="s-import">후보지 CSV</button>
-        <button class="sm" id="s-import-poi">POI CSV</button>
-        <button class="sm primary" id="s-export">CSV 내보내기</button>
-      </div>
-    </div>
-    <div class="card" style="margin-bottom:14px">
-      <div class="grid g4">
-        <label class="field" style="margin:0"><span>검색</span><input id="s-q" placeholder="후보지명·주소"/></label>
-        <label class="field" style="margin:0"><span>진행 단계</span><select id="s-stage"></select></label>
-      </div>
-    </div>
-    <div id="s-form" class="hide" style="margin-bottom:14px"></div>
-    <div id="s-table"></div>
-    <div id="s-detail" style="margin-top:14px"></div>
-  </section>
-
-  <!-- ══ 상권 지도 ══ -->
-  <section id="panel-map" class="panel hide">
-    <div class="panel-head">
-      <div>
-        <h2>상권 지도</h2>
-        <p>지도 API·키 없이 좌표만으로 그리는 경쟁 분포도입니다. 색으로 동일포지션·앵커·자사점을 구분합니다.</p>
-      </div>
-    </div>
-    <div id="map-body"></div>
-  </section>
-
-  <!-- ══ 손익 시뮬 ══ -->
-  <section id="panel-sim" class="panel hide">
-    <div class="panel-head">
-      <div>
-        <h2>손익 시뮬레이션 <small style="font-weight:600;color:var(--fg-mute)">— <span id="cur-site">—</span></small></h2>
-        <p>객단가·임대료·원가율을 움직이면 영업이익·손익분기·투자회수가 즉시 다시 계산됩니다.
-           <code>analysis/estimate_revenue.py</code> 와 같은 모델입니다.</p>
-      </div>
-    </div>
-    <div id="sim-body"></div>
-  </section>
-
-  <!-- ══ 리포트 ══ -->
-  <section id="panel-report" class="panel hide">
-    <div class="panel-head">
-      <div>
-        <h2>상권조사 리포트</h2>
-        <p>후보지별 제출용 리포트를 마크다운으로 만듭니다. <code>analysis/build_report.py</code> 출력과 동일합니다.</p>
-      </div>
-    </div>
-    <div id="rp-body"></div>
-  </section>
-
-  <!-- ══ 브랜드 설정 ══ -->
-  <section id="panel-settings" class="panel hide">
-    <div class="panel-head">
-      <div>
-        <h2>브랜드 설정</h2>
-        <p>객단가·원가율·초기투자 같은 브랜드 파라미터입니다. 여기 값이 모든 점수·매출·손익 계산의 기준이 됩니다.
-           비워두면 기본값을 씁니다.</p>
-      </div>
-    </div>
-    <div id="set-body" class="grid" style="gap:14px"></div>
-  </section>
-
+  <section id="p-status" class="panel"></section>
+  <section id="p-sites" class="panel hide"></section>
+  <section id="p-sim" class="panel hide"></section>
+  <section id="p-data" class="panel hide"></section>
 </main>
 
 <div id="toast"></div>
 
 <script src="js/util.js"></script>
-<script src="js/model.js"></script>
+<script src="js/m5.js"></script>
 <script src="js/demo.js"></script>
 <script src="js/store.js"></script>
-<script src="js/map.js"></script>
-<script src="js/sites.js"></script>
-<script src="js/sim.js"></script>
-<script src="js/report.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

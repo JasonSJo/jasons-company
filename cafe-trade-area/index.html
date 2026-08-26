@@ -3,11 +3,11 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>상권 분석 · 카페 프랜차이즈 출점 심사</title>
-<meta name="description" content="출점 후보지의 상권을 100점으로 채점하고 매출·손익·투자회수를 추정해 출점 여부를 심의합니다. 파이썬 파이프라인과 브라우저 콘솔이 같은 모델을 씁니다."/>
+<title>상권분석 알고리즘 · 커피 프랜차이즈 점포개발</title>
+<meta name="description" content="등시선으로 상권을 획정하고 Huff 로 경쟁을 배분해 매출을 예측구간으로 추정한 뒤, 부결 트리거로 출점 여부를 심의하는 사내 알고리즘. M1~M6 6개 모듈."/>
 <meta name="color-scheme" content="light"/>
-<meta property="og:title" content="상권 분석 · 카페 프랜차이즈 출점 심사"/>
-<meta property="og:description" content="이 자리에서 얼마를 벌 수 있는가 — 후보지를 100점으로 채점하고 손익까지 추정하는 출점 심사 시스템."/>
+<meta property="og:title" content="상권분석 알고리즘 · 커피 프랜차이즈 점포개발"/>
+<meta property="og:description" content="정량 점수는 보조, 부결 트리거가 실질 방어선 — 점포개발 심의 알고리즘 v1.0."/>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23efeae0'/%3E%3Ccircle cx='16' cy='16' r='11' fill='none' stroke='%239a3b1b' stroke-width='1.4' stroke-dasharray='3 3'/%3E%3Ccircle cx='16' cy='16' r='3.6' fill='%239a3b1b'/%3E%3C/svg%3E"/>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
@@ -261,16 +261,20 @@ code{
 }
 .step .eq b{color:var(--roast);font-weight:600}
 .step .note{margin-top:11px;font-size:13.5px;color:var(--ink-mute);line-height:1.66;max-width:60ch}
+.step .note b{color:var(--ink-soft);font-weight:600}
+.tagx{font-family:var(--mono);font-size:10px;letter-spacing:.12em;color:var(--roast);
+  border:1px solid var(--roast);padding:1px 6px;margin-left:8px;vertical-align:2px;font-weight:500}
 
 /* ── 산출 테이블 ───────────────────────────────────────── */
 .tbl-wrap{margin-top:42px;overflow-x:auto;border-top:1px solid var(--ink)}
-table{border-collapse:collapse;width:100%;min-width:720px}
+table{border-collapse:collapse;width:100%;min-width:880px}
 th{
   font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.14em;
   text-transform:uppercase;color:var(--ink-mute);text-align:left;
   padding:13px 12px 13px 0;border-bottom:1px solid var(--rule);white-space:nowrap;
 }
-th.n,td.n{text-align:right;padding-right:0}
+th.n,td.n{text-align:right;padding-right:16px}
+tr > *:last-child{padding-right:0}
 td{padding:17px 12px 17px 0;border-bottom:1px solid var(--rule-soft);vertical-align:middle}
 td.n{font-family:var(--mono);font-weight:500;font-variant-numeric:tabular-nums}
 tbody tr{transition:background .16s}
@@ -356,6 +360,14 @@ footer{position:relative;z-index:2;padding:44px 0 64px;border-top:1px solid var(
 .fbar .sp{margin-left:auto}
 @media(max-width:640px){.fbar .sp{margin-left:0}}
 
+/* ── 거버넌스 배너 ─────────────────────────── */
+.gov{
+  border:1px solid var(--alert); border-left-width:4px; padding:16px 20px;
+  background:var(--paper-2); display:flex; flex-direction:column; gap:6px;
+}
+.gov b{font-family:var(--mono);font-size:11px;letter-spacing:.16em;color:var(--alert)}
+.gov span{font-size:13px;color:var(--ink-soft);line-height:1.7;max-width:78ch}
+
 /* ── 스크롤 등장 ───────────────────────────────────────── */
 .rv{opacity:0;transform:translateY(22px);transition:opacity .8s cubic-bezier(.22,.9,.3,1),transform .8s cubic-bezier(.22,.9,.3,1)}
 .rv.in{opacity:1;transform:none}
@@ -387,16 +399,26 @@ footer{position:relative;z-index:2;padding:44px 0 64px;border-top:1px solid var(
       <circle cx="13" cy="13" r="5.5" fill="none" stroke="#9a3b1b" stroke-width="1" opacity=".55"/>
       <circle cx="13" cy="13" r="3" fill="#9a3b1b"/>
     </svg>
-    <b>상권 분석</b><span>Trade Area</span>
+    <b>상권분석 알고리즘</b><span>v1.0 · 사내</span>
   </a>
   <nav>
     <a href="#problem">문제</a>
-    <a href="#score">채점</a>
-    <a href="#model">공식</a>
+    <a href="#pipeline">파이프라인</a>
+    <a href="#verdict">판정</a>
     <a href="#proof">산출</a>
+    <a href="#limits">한계</a>
     <a href="app/index.html">콘솔 ↗</a>
   </nav>
 </header>
+
+<div class="wrap" style="padding-top:22px">
+  <div class="gov">
+    <b>사내 한정 · 대외 배포 금지</b>
+    <span>본 산출물은 내부 의사결정 자료입니다. 가맹희망자에게 제공하는 예상매출액
+      산정서와 수치를 혼용하지 마십시오. 제공치가 내부 중앙값 추정치를 초과하지 않도록
+      별도 통제해야 합니다.</span>
+  </div>
+</div>
 
 <main class="wrap">
 
@@ -404,21 +426,21 @@ footer{position:relative;z-index:2;padding:44px 0 64px;border-top:1px solid var(
   <section class="hero">
     <div class="hero-grid">
       <div>
-        <div class="eyebrow rv">카페 프랜차이즈 출점 심사</div>
-        <h1 class="rv d1"><span>이 자리에서</span><span class="l2">얼마를</span><span class="l3">벌 수 있는가</span></h1>
+        <div class="eyebrow rv">커피 프랜차이즈 점포개발 심의</div>
+        <h1 class="rv d1"><span>이 자리를</span><span class="l2">열어도</span><span class="l3">되는가</span></h1>
         <p class="lede rv d2">
-          출점 후보지의 상권을 <b>100점으로 채점</b>하고, 하루 객수·월 매출·영업이익·
-          손익분기·투자회수까지 추정해 <b>출점 여부를 심의</b>합니다.
-          파이썬 파이프라인과 브라우저 콘솔이 <b>같은 모델</b>을 씁니다.
+          보행 <b>등시선</b>으로 상권을 긋고, <b>Huff 모델</b>로 경쟁을 배분하고,
+          매출을 점추정이 아닌 <b>예측구간</b>으로 냅니다. 그리고 통과 여부는
+          점수가 아니라 <b>부결 트리거</b>가 정합니다 — 정량 점수는 보조입니다.
         </p>
         <div class="acts rv d3">
           <a class="btn solid" href="app/index.html">콘솔 열기 <span class="ar">→</span></a>
-          <a class="btn line" href="QUICKSTART.md">QUICKSTART <span class="ar">→</span></a>
+          <a class="btn line" href="README.md">알고리즘 문서 <span class="ar">→</span></a>
         </div>
         <div class="facts rv d3">
-          <div class="fact"><b>100</b><span>점 만점 · 5개 항목</span></div>
-          <div class="fact"><b>4</b><span>단계 자동 파이프라인</span></div>
-          <div class="fact"><b>28</b><span>모델 대조 테스트</span></div>
+          <div class="fact"><b>6</b><span>모듈 · M1~M6</span></div>
+          <div class="fact"><b>4</b><span>치명 플래그 · 단독 부결</span></div>
+          <div class="fact"><b>89</b><span>검증 테스트</span></div>
         </div>
       </div>
 
@@ -482,142 +504,139 @@ footer{position:relative;z-index:2;padding:44px 0 64px;border-top:1px solid var(
   <section class="sec" id="problem">
     <div class="tag"><span class="no">01</span><span class="nm">문제</span><span class="bar"></span></div>
     <div>
-      <h2 class="rv">유동인구에 유입률을 곱하면 <span class="hl">같은 사람을 두 번 셉니다</span></h2>
+      <h2 class="rv">반경 300m 원은 <span class="hl">상권이 아닙니다</span></h2>
       <p class="sub rv d1">
-        상권 분석에서 가장 흔한 매출 추정식은 <code>유동인구 × 유입률</code> 입니다.
-        여기에 배후 인구까지 더하면 숫자는 그럴듯해지지만, <b>유동인구 통계에 이미 포함된
-        직장·주거 인구를 한 번 더 세게</b> 됩니다.
+        커피는 유효 상권이 좁습니다. 반경 300m 안이어도 <b>6차선 도로에 횡단보도가 없거나,
+        하천·철로·옹벽이 지나가거나, 경사가 10%를 넘으면</b> 그쪽 수요는 0 에 수렴합니다.
+        원으로 그린 상권은 그 사실을 통째로 놓칩니다.
       </p>
       <p class="sub rv d1">
-        이 시스템의 초기 모델이 정확히 그 함정에 빠졌습니다. 강남역 후보지 하나에
-        <b>월 1억 5천만원</b>을 내놨습니다 — 18평 저가 카페로는 불가능한 숫자입니다.
-        구조를 바꾸고 나서야 현실 범위로 내려왔습니다.
+        그래서 M1 은 OSM 보행 네트워크(4km/h)로 <b>등시선</b> P5·P10 을 긋고,
+        단절 요소를 barrier 로 미리 제거한 뒤 <b>잔존율 R</b> 을 냅니다.
+        같은 10분이라도 실제로 걸어 닿는 면적이 얼마나 남는지가 R 입니다.
       </p>
 
       <div class="vs rv d2">
         <div class="old">
-          <h4><span>✕</span> 폐기한 방식</h4>
+          <h4><span>✕</span> 반경법</h4>
           <div class="calc">
-            유동인구 <s>86,000</s> × 유입률 1.37%<br/>
-            <span style="color:var(--alert)">+</span> 배후 직장 52,000 × 1.0%<br/>
-            <span style="color:var(--alert)">+</span> 배후 주거 5,200 × 0.4%<br/>
-            = 하루 1,719명
+            반경 <s>500m</s> 원<br/>
+            = 면적 78.5ha<br/>
+            <span style="color:var(--alert)">·</span> 단절 요소 반영 없음<br/>
+            <span style="color:var(--alert)">·</span> 모든 후보지가 같은 크기
           </div>
-          <div class="out"><span class="n">15,448</span><span class="u">만원 / 월</span></div>
-          <p class="verdict"><b>이중 계상.</b> 유동인구 안에 직장·주거 인구가 이미 들어 있는데
-            같은 사람을 세 번 더했습니다.</p>
+          <div class="out"><span class="n">R = —</span></div>
+          <p class="verdict"><b>변별 불가.</b> 강 건너편도, 6차선 반대편도
+            같은 상권으로 셉니다.</p>
         </div>
         <div class="new">
-          <h4><span>✓</span> 현행 방식</h4>
+          <h4><span>✓</span> 등시선 · 잔존율</h4>
           <div class="calc">
-            상권 총 카페수요 10,370명 / 일<br/>
-            ÷ 반경 내 카페 58곳 (+ 자사 1)<br/>
-            × 입지배수 1.653 (접근성 반영)<br/>
-            = 점유율 2.80% → 하루 226명
+            P10 = 보행 10분 도달 폴리곤<br/>
+            R = area(P10) ÷ (π × 667m²)<br/>
+            <span style="color:var(--survey)">·</span> 목동 아파트단지 R = 0.74<br/>
+            <span style="color:var(--survey)">·</span> 신림 학원가 &nbsp;&nbsp;&nbsp;R = 0.52
           </div>
-          <div class="out"><span class="n">3,527</span><span class="u">만원 / 월</span></div>
-          <p class="verdict"><b>시장을 먼저 재고 나눕니다.</b> 상권 전체 수요를 구한 뒤,
-            경쟁 점포들이 나눠 갖는 몫으로 자사 매출을 잡습니다.</p>
+          <div class="out"><span class="n">0.52~0.74</span><span class="u">예시 6곳</span></div>
+          <p class="verdict"><b>같은 10분이 다른 면적입니다.</b> 신림은 도달 가능 면적의
+            48%가 단절로 날아갑니다.</p>
         </div>
       </div>
-    </div>
-  </section>
 
-  <!-- ══════════ 02 채점 ══════════ -->
-  <section class="sec" id="score">
-    <div class="tag"><span class="no">02</span><span class="nm">채점</span><span class="bar"></span></div>
-    <div>
-      <h2 class="rv">다섯 항목, <span class="hl">100점</span></h2>
-      <p class="sub rv d1">
-        후보지 하나를 놓고는 좋은지 나쁜지 알 수 없습니다. 같은 자로 10곳 이상을 재야
-        순위가 생깁니다. 각 항목은 근거 문장과 함께 나오므로 왜 그 점수인지 되짚을 수 있습니다.
+      <p class="tbl-note rv" style="margin-top:22px">
+        등시선을 확보하지 못하면 원형으로 폴백하지만, 그때는 산출물 전체에 경고가 붙습니다.
+        명세가 <b>오차의 가장 큰 부분을 흡수한다</b>고 지목한 단계를 건너뛴 상태이기 때문입니다.
       </p>
-
-      <div class="rubric rv d2">
-        <div class="row">
-          <span class="i">Ⅰ</span><span class="nm">배후수요</span>
-          <span class="desc">주거·직장인구, 아파트 세대수, 대학·학원, 오피스빌딩. 직장인구에 가장 큰 가중.</span>
-          <span class="pt" style="--w:100%">30</span>
-        </div>
-        <div class="row">
-          <span class="i">Ⅱ</span><span class="nm">유동인구</span>
-          <span class="desc">일평균 유동 + 역 승하차(0.3 가중). 승하차는 유동 자체가 아니라 유입원이라 낮게 잡습니다.</span>
-          <span class="pt" style="--w:83%">25</span>
-        </div>
-        <div class="row">
-          <span class="i">Ⅲ</span><span class="nm">경쟁</span>
-          <span class="desc">카페 1개당 배후인구, 동일포지션 브랜드 수, 자사점 자기잠식 감점, 앵커 브랜드 가점.</span>
-          <span class="pt" style="--w:66%">20</span>
-        </div>
-        <div class="row">
-          <span class="i">Ⅳ</span><span class="nm">접근성</span>
-          <span class="desc">역 도보시간, 코너 여부, 1층 여부, 전면 길이, 주차. 같은 상권에서 몫을 가르는 변수.</span>
-          <span class="pt" style="--w:50%">15</span>
-        </div>
-        <div class="row">
-          <span class="i">Ⅴ</span><span class="nm">비용</span>
-          <span class="desc">평당 임대료. 좋은 자리는 비싸고, 비싸면 남지 않습니다.</span>
-          <span class="pt" style="--w:33%">10</span>
-        </div>
-        <div class="row total">
-          <span class="i">Σ</span><span class="nm">종합</span>
-          <span class="desc">A 80+ 즉시 검토 · B 65+ 조건부 · C 50+ 보류 · D 부적합</span>
-          <span class="pt" style="--w:100%">100</span>
-        </div>
-      </div>
     </div>
   </section>
 
-  <!-- ══════════ 03 공식 ══════════ -->
-  <section class="sec" id="model">
-    <div class="tag"><span class="no">03</span><span class="nm">공식</span><span class="bar"></span></div>
+  <!-- ══════════ 02 파이프라인 ══════════ -->
+  <section class="sec" id="pipeline">
+    <div class="tag"><span class="no">02</span><span class="nm">파이프라인</span><span class="bar"></span></div>
     <div>
-      <h2 class="rv">점수는 순위를 만들고,<br/><span class="hl">손익이 결론을 만듭니다</span></h2>
+      <h2 class="rv">여섯 모듈</h2>
       <p class="sub rv d1">
-        점수가 높아도 남는 게 없으면 출점하면 안 됩니다. 그래서 채점 다음에 매출을 세우고,
-        매출 위에 손익을 세우고, 손익으로 결론을 냅니다.
+        M1 이 상권을 긋고, M2 가 그 안의 수요를 세고, M3 이 경쟁과 나누고, M4 가 매출을
+        추정하고, M5 가 판정합니다. <b>M6 는 선택이 아닙니다</b> — 실적으로 계수를 교정하지
+        않으면 앞의 다섯이 스스로를 검증할 방법이 없습니다.
       </p>
 
       <div class="formula rv d2">
-        <div class="step">
-          <span class="s">1</span>
-          <div>
-            <h4>시장 수요</h4>
-            <div class="eq">유동인구 × <b>4.5%</b> &nbsp;+&nbsp; 주거인구 × <b>5%</b> &nbsp;+&nbsp; 직장인구 × <b>12%</b></div>
-            <p class="note">반경 안 카페 전체가 하루에 받는 손님 수. 직장인구의 카페 이용 빈도가
-              주거의 2.4배라는 점을 반영했습니다.</p>
-          </div>
-        </div>
-        <div class="step">
-          <span class="s">2</span>
-          <div>
-            <h4>자사 점유율</h4>
-            <div class="eq">( 1 ÷ (반경 내 카페수 + 1) ) × <b>입지배수 0.70~1.80</b> &nbsp;·&nbsp; 상한 25%</div>
-            <p class="note">균등분할에서 출발해 접근성 점수만큼 배수를 줍니다. 코너·1층·역세권이면
-              같은 상권에서 더 가져갑니다. 좌석 처리능력이 매장 이용객에 상한을 씌우고,
-              테이크아웃 몫은 이 상한을 받지 않습니다.</p>
-          </div>
-        </div>
-        <div class="step">
-          <span class="s">3</span>
-          <div>
-            <h4>손익 · 손익분기</h4>
-            <div class="eq">인건비 = <b>max( 최소인건비, 매출 × 인건비율 )</b></div>
-            <p class="note">인건비는 고정비가 아닙니다 — 매출이 오르면 사람을 더 씁니다.
-              그래서 손익분기도 최소인건비 구간과 인건비율 구간으로 나눠 풉니다.
-              투자회수는 돌려받는 보증금을 뺀 <b>매몰투자</b> 기준으로 계산합니다.</p>
-          </div>
-        </div>
-        <div class="step">
-          <span class="s">4</span>
-          <div>
-            <h4>심의</h4>
-            <div class="eq">출점 추천 &nbsp;/&nbsp; 조건부 추천 &nbsp;/&nbsp; 보류 &nbsp;/&nbsp; <b>반려</b></div>
-            <p class="note">BEP 미달이거나 영업이익이 적자면 점수와 무관하게 반려입니다.
-              회수 36개월 초과, 자기잠식, 동일포지션 과밀은 리스크로 함께 표시됩니다.</p>
-          </div>
-        </div>
+        <div class="step"><span class="s">1</span><div>
+          <h4>상권 획정 <span class="tagx">M1</span></h4>
+          <div class="eq">R = area(P10) ÷ (π × <b>667m</b>²)</div>
+          <p class="note">보행 등시선 P5·P10. barrier(횡단보도 없는 6차선 이상·하천·철로·
+            옹벽·경사 10% 초과)는 폴리곤 생성 단계에서 제거합니다.</p>
+        </div></div>
+        <div class="step"><span class="s">2</span><div>
+          <h4>수요 변수 <span class="tagx">M2</span></h4>
+          <div class="eq">D_am_adj = D_am_같은편 + ( D_am_반대편 × <b>0.3</b> )</div>
+          <p class="note">100m 격자 인구를 등시선과 면적 가중 교차해 H·W 를 냅니다.
+            유동인구는 출근 진행 방향과 도로 좌·우로 나눠 횡단저항을 적용합니다.</p>
+        </div></div>
+        <div class="step"><span class="s">3</span><div>
+          <h4>경쟁 배분 <span class="tagx">M3</span></h4>
+          <div class="eq">S_i = ( A_i / d_i^<b>λ</b> ) ÷ Σ ( A_j / d_j^<b>λ</b> ) &nbsp;·&nbsp; A = 좌석수^0.5 × 브랜드가중</div>
+          <p class="note">Huff 모델. 거리는 직선이 아니라 보행 네트워크 거리입니다.
+            수요가 상권에 흩어져 있으므로 격자마다 점유율을 구해 수요로 가중평균합니다.</p>
+        </div></div>
+        <div class="step"><span class="s">4</span><div>
+          <h4>매출 추정 <span class="tagx">M4</span></h4>
+          <div class="eq">Mode A ( n ≥ 15 ) 로그선형 회귀 &nbsp;/&nbsp; Mode B ( n &lt; 15 ) 기준점포 앵커링</div>
+          <p class="note">출력은 점추정이 아니라 <b>예측구간</b>입니다. 하한·중앙·상한을
+            out-of-fold 잔차의 25/50/75 분위로 만듭니다 — 정규성을 가정하지 않고
+            실제로 빗나간 만큼만 벌립니다. <b>중앙값이 심의 기준값</b>입니다.</p>
+        </div></div>
+        <div class="step"><span class="s">5</span><div>
+          <h4>판정 <span class="tagx">M5</span></h4>
+          <div class="eq">BEP = F ÷ ( 1 − v ) &nbsp;·&nbsp; margin = ( R_median − BEP ) ÷ R_median</div>
+          <p class="note">통과 / 보류 / 부결 3단. 자기잠식은 등시선 중첩률로 잽니다 —
+            overlap × 기존점 매출 × κ.</p>
+        </div></div>
+        <div class="step"><span class="s">6</span><div>
+          <h4>사후 보정 <span class="tagx">M6</span></h4>
+          <div class="eq">MAPE &gt; <b>20%</b> 가 <b>3건 연속</b> → 모델 재적합</div>
+          <p class="note">개점 후 6·12개월 실매출로 λ·κ·횡단저항을 교정합니다.
+            <b>계수를 자동으로 바꾸지 않습니다</b> — 제안서를 내고 사람이 반영합니다.
+            심의 기준이 아무도 모르게 바뀌는 쪽이 더 위험합니다.</p>
+        </div></div>
       </div>
+    </div>
+  </section>
+
+  <!-- ══════════ 03 판정 ══════════ -->
+  <section class="sec" id="verdict">
+    <div class="tag"><span class="no">03</span><span class="nm">판정</span><span class="bar"></span></div>
+    <div>
+      <h2 class="rv">점수는 보조입니다.<br/><span class="hl">부결 트리거가 방어선입니다</span></h2>
+      <p class="sub rv d1">
+        추정 매출은 틀릴 수 있습니다. 그래서 통과 여부를 점수에 걸지 않습니다.
+        아래 네 항목은 <b>점수·매출과 무관하게 단독으로</b> 부결시킵니다.
+      </p>
+
+      <div class="rubric rv d2">
+        <div class="row"><span class="i">⛔</span><span class="nm">근저당 과다</span>
+          <span class="desc">등기부상 선순위 권리로 보증금 회수가 불확실한 물건</span>
+          <span class="pt">부결</span></div>
+        <div class="row"><span class="i">⛔</span><span class="nm">임대인 불일치</span>
+          <span class="desc">등기부상 소유자와 계약 상대가 다름 — 전대차 구조·자기거래 정황</span>
+          <span class="pt">부결</span></div>
+        <div class="row"><span class="i">⛔</span><span class="nm">소송 계류</span>
+          <span class="desc">명도 분쟁·소송이 걸려 있는 물건</span>
+          <span class="pt">부결</span></div>
+        <div class="row"><span class="i">⛔</span><span class="nm">인허가 불가</span>
+          <span class="desc">용도지역·정화조 용량 등으로 휴게음식점 인허가가 나지 않음</span>
+          <span class="pt">부결</span></div>
+        <div class="row total"><span class="i">△</span><span class="nm">안전마진</span>
+          <span class="desc">margin &lt; 15% 부결 · margin &lt; 30% 또는 하한 시나리오 적자면 보류</span>
+          <span class="pt">15 / 30</span></div>
+      </div>
+
+      <p class="tbl-note rv" style="margin-top:22px">
+        예시의 <b>홍대 어울마당로</b>는 margin 41.8% 로 수익성 기준을 통과하지만
+        명도 분쟁이 걸려 있어 <b>부결</b>입니다. 실사 칸이 비어 있으면 '통과'에도
+        <b>잠정</b> 표시가 붙습니다 — 실사 전 통과는 통과가 아닙니다.
+      </p>
     </div>
   </section>
 
@@ -625,124 +644,110 @@ footer{position:relative;z-index:2;padding:44px 0 64px;border-top:1px solid var(
   <section class="sec" id="proof">
     <div class="tag"><span class="no">04</span><span class="nm">산출</span><span class="bar"></span></div>
     <div>
-      <h2 class="rv">예시 6곳, <span class="hl">실제 파이프라인 출력</span></h2>
+      <h2 class="rv">예시 6곳, <span class="hl">실제 심의표</span></h2>
       <p class="sub rv d1">
-        아래 표는 문구가 아니라 <code>./run_all.sh</code> 가 방금 뱉은 값입니다.
-        추정 월매출 1,438~4,395만원 — 국내 프랜차이즈 카페의 실제 범위 안에 들어옵니다.
+        <code>./run_all.sh</code> 가 낸 값입니다. Mode A(회귀) · 유효표본 16 ·
+        R² 0.938 · LOOCV MAPE 16.9%. 금액 단위 만원.
       </p>
 
       <div class="tbl-wrap rv d2">
         <table>
-          <thead>
-            <tr>
-              <th>후보지</th><th class="n">총점</th><th class="n">월매출</th>
-              <th class="n">영업이익</th><th class="n">BEP 달성</th><th class="n">회수</th><th class="n">심의</th>
-            </tr>
-          </thead>
+          <thead><tr><th>판정</th><th>후보지</th><th class="n">S</th><th class="n">R</th>
+            <th class="n">Huff</th><th class="n">월매출(중앙)</th><th class="n">BEP</th>
+            <th class="n">margin</th><th>사유</th></tr></thead>
           <tbody>
-            <tr>
-              <td><span class="gr B">B</span><span class="site">판교 유스페이스<small>오피스 배후 46,000명 · 경쟁 34곳</small></span></td>
-              <td class="n"><span data-cnt="76.6" data-dec="1">76.6</span></td>
-              <td class="n"><span data-cnt="4395">4,395</span></td>
-              <td class="n"><span data-cnt="1110">1,110</span></td>
-              <td class="n">213%</td><td class="n">13개월</td>
-              <td class="n"><span class="vd pass">조건부 추천</span></td>
-            </tr>
-            <tr>
-              <td><span class="gr B">B</span><span class="site">강남역 11번출구<small>유동 86,000명 · 경쟁 58곳 · 임대 720만</small></span></td>
-              <td class="n"><span data-cnt="72" data-dec="1">72.0</span></td>
-              <td class="n"><span data-cnt="3527">3,527</span></td>
-              <td class="n"><span data-cnt="434">434</span></td>
-              <td class="n">133%</td><td class="n">42개월</td>
-              <td class="n"><span class="vd hold">보류</span></td>
-            </tr>
-            <tr>
-              <td><span class="gr B">B</span><span class="site">신림 별빛거리<small>1인가구·학원가 · 동일포지션 9곳</small></span></td>
-              <td class="n"><span data-cnt="65.1" data-dec="1">65.1</span></td>
-              <td class="n"><span data-cnt="1852">1,852</span></td>
-              <td class="n"><span data-cnt="21">21</span></td>
-              <td class="n">102%</td><td class="n">580개월</td>
-              <td class="n"><span class="vd hold">보류</span></td>
-            </tr>
-            <tr>
-              <td><span class="gr B">B</span><span class="site">성수 연무장길<small>카페거리 초입 · 코너 1층 전면 9m</small></span></td>
-              <td class="n"><span data-cnt="65" data-dec="1">65.0</span></td>
-              <td class="n"><span data-cnt="2449">2,449</span></td>
-              <td class="n"><span data-cnt="285">285</span></td>
-              <td class="n">125%</td><td class="n">50개월</td>
-              <td class="n"><span class="vd hold">보류</span></td>
-            </tr>
-            <tr class="denied">
-              <td><span class="gr C">C</span><span class="site">홍대 어울마당로<small>경쟁 73곳 과밀 · 임대 480만</small></span></td>
-              <td class="n"><span data-cnt="64.7" data-dec="1">64.7</span></td>
-              <td class="n"><span data-cnt="1438">1,438</span></td>
-              <td class="n neg">−<span data-cnt="455">455</span></td>
-              <td class="n neg">65%</td><td class="n">—</td>
-              <td class="n"><span class="vd deny">반려</span></td>
-            </tr>
-            <tr>
-              <td><span class="gr C">C</span><span class="site">목동 7단지 상가<small>아파트 5,300세대 · 경쟁 12곳</small></span></td>
-              <td class="n"><span data-cnt="60.6" data-dec="1">60.6</span></td>
-              <td class="n"><span data-cnt="2452">2,452</span></td>
-              <td class="n"><span data-cnt="417">417</span></td>
-              <td class="n">141%</td><td class="n">32개월</td>
-              <td class="n"><span class="vd hold">보류</span></td>
-            </tr>
+            <tr><td><span class="vd hold">△ 보류</span></td>
+              <td><span class="site">강남역 11번출구<small>예측구간 4,438~5,490</small></span></td>
+              <td class="n">59.0</td><td class="n">0.55</td><td class="n">2.81%</td>
+              <td class="n">5,175</td><td class="n">2,430</td><td class="n">53.0%</td>
+              <td class="why">S 59.0 &lt; 70 · 자사 상권 중첩 52% &gt; 30%</td></tr>
+            <tr><td><span class="vd hold">△ 보류</span></td>
+              <td><span class="site">성수 연무장길<small>예측구간 3,071~3,799</small></span></td>
+              <td class="n">55.5</td><td class="n">0.62</td><td class="n">8.27%</td>
+              <td class="n">3,581</td><td class="n">1,832</td><td class="n">48.8%</td>
+              <td class="why">S 55.5 &lt; 70</td></tr>
+            <tr><td><span class="vd hold">△ 보류</span></td>
+              <td><span class="site">판교 유스페이스<small>예측구간 2,917~3,609</small></span></td>
+              <td class="n">47.2</td><td class="n">0.66</td><td class="n">5.78%</td>
+              <td class="n">3,402</td><td class="n">2,299</td><td class="n">32.4%</td>
+              <td class="why">S 47.2 &lt; 70</td></tr>
+            <tr class="denied"><td><span class="vd deny">✕ 부결</span></td>
+              <td><span class="site">홍대 어울마당로<small>수익성은 통과 · 권리관계로 탈락</small></span></td>
+              <td class="n">48.1</td><td class="n">0.58</td><td class="n">4.03%</td>
+              <td class="n">3,237</td><td class="n">1,883</td><td class="n">41.8%</td>
+              <td class="why">치명: 소송·명도 분쟁 계류 중인 물건</td></tr>
+            <tr class="denied"><td><span class="vd deny">✕ 부결</span></td>
+              <td><span class="site">목동 7단지 상가<small>하한 시나리오 −12.6%</small></span></td>
+              <td class="n">49.9</td><td class="n">0.74</td><td class="n">17.93%</td>
+              <td class="n">1,786</td><td class="n">1,724</td><td class="n neg">3.5%</td>
+              <td class="why">margin 3.5% &lt; 15%</td></tr>
+            <tr class="denied"><td><span class="vd deny">✕ 부결</span></td>
+              <td><span class="site">신림 별빛거리<small>BEP 미달</small></span></td>
+              <td class="n">40.0</td><td class="n">0.52</td><td class="n">6.52%</td>
+              <td class="n">1,802</td><td class="n">1,842</td><td class="n neg">−2.2%</td>
+              <td class="why">margin −2.2% &lt; 15%</td></tr>
           </tbody>
         </table>
       </div>
       <p class="tbl-note rv">
-        금액 단위 만원. 홍대 후보지는 총점 64.7점으로 중위권이지만 경쟁 73곳 과밀에
-        임대료가 겹쳐 <b>영업이익 −455만원 · 반려</b>로 걸립니다.
-        점수만 봤다면 검토 대상에 남았을 자리입니다.
+        통과 0곳. 목동은 Huff 점유율 17.9%로 여섯 곳 중 가장 높지만 배후 규모가 작아
+        BEP 를 겨우 넘고, 하한 시나리오에서 적자로 꺾입니다. <b>점유율이 높다고 되는 자리가
+        아닙니다.</b>
       </p>
     </div>
   </section>
 
-  <!-- ══════════ 05 실행 ══════════ -->
-  <section class="sec" id="run">
-    <div class="tag"><span class="no">05</span><span class="nm">실행</span><span class="bar"></span></div>
+  <!-- ══════════ 05 한계 ══════════ -->
+  <section class="sec" id="limits">
+    <div class="tag"><span class="no">05</span><span class="nm">한계</span><span class="bar"></span></div>
     <div>
-      <h2 class="rv">두 경로, <span class="hl">하나의 모델</span></h2>
+      <h2 class="rv">심의 자리에서 <span class="hl">반드시 고지할 것</span></h2>
       <p class="sub rv d1">
-        터미널에서 돌리든 브라우저에서 누르든 같은 숫자가 나와야 합니다.
-        그렇지 않으면 둘 중 하나는 거짓말이 됩니다.
+        이 시스템이 무엇을 모르는지가 무엇을 아는지만큼 중요합니다.
+        모든 리포트 말미에 미검증 계수 목록이 인쇄됩니다.
       </p>
 
-      <div class="paths rv d2">
-        <div class="path">
-          <span class="kick">Pipeline</span>
-          <h4>파이썬 파이프라인</h4>
-          <p>POI 수집 → 채점 → 손익 시뮬 → 후보지별 제출용 리포트. 기본은 dry-run 이라
-            외부 호출이 전혀 없고, <code>--live</code> 를 붙일 때만 지도 API 를 씁니다.</p>
-<pre><span class="c"># 예시 데이터로 전 과정 (무료·네트워크 없음)</span>
-<span class="f">./run_all.sh</span>
-
-<span class="c"># 내 데이터 + 실제 POI 수집</span>
-<span class="f">./run_all.sh</span> --live --sites 내후보지.csv</pre>
-        </div>
-        <div class="path">
-          <span class="kick">Console</span>
-          <h4>브라우저 콘솔</h4>
-          <p>후보지·상권 지도·손익 시뮬·리포트를 한 화면에서. 설치도 서버도 계정도 없고,
-            데이터는 그 브라우저에만 남습니다. 상권 지도는 지도 API 없이 좌표를 평면으로
-            투영해 SVG 로 직접 그립니다.</p>
-          <div class="acts" style="margin-top:18px">
-            <a class="btn line" href="app/index.html">콘솔 열기 <span class="ar">→</span></a>
-          </div>
-        </div>
+      <div class="formula rv d2">
+        <div class="step"><span class="s">!</span><div>
+          <h4>Mode B 는 순환논리에 가깝습니다</h4>
+          <p class="note">가중치를 임의로 정하고, 그 가중치로 만든 점수로 매출을 추정하고,
+            그 추정치로 통과를 판단합니다. 검증되는 것은 사후 실적뿐입니다.
+            <b>대응</b> — Mode B 구간에서는 결과를 심의 참고자료로만 쓰고,
+            최종 판단은 부결 트리거에 둡니다.</p>
+        </div></div>
+        <div class="step"><span class="s">!</span><div>
+          <h4>유동인구 해상도</h4>
+          <p class="note">기지국 기반 추정치는 시간대 정밀도가 낮고 도로 좌·우 구분이
+            안 되는 경우가 많습니다. D_am 과 방향성 보정은 정확도의 핵심 변수입니다.
+            <b>대응</b> — 후보지별 <b>07~09시 현장 통행량 실측 카운트</b>를 필수 절차로
+            편성합니다. 이 절차 없이는 M2 이후 전 단계의 신뢰도가 확보되지 않습니다.</p>
+        </div></div>
+        <div class="step"><span class="s">!</span><div>
+          <h4>계수 전반이 미검증입니다</h4>
+          <div class="eq">λ = <b>2.2</b> &nbsp;·&nbsp; 횡단저항 <b>0.3</b> &nbsp;·&nbsp; κ = <b>0.5</b> &nbsp;·&nbsp; 브랜드 티어 가중 &nbsp;·&nbsp; 축별 배점</div>
+          <p class="note">전부 실무 판단 초기값이며 실증 근거가 없습니다. 계수 레지스트리가
+            검증 상태(MEASURED / ESTIMATED)를 함께 들고 있고, M6 루프가 순차 교정합니다.</p>
+        </div></div>
+        <div class="step"><span class="s">!</span><div>
+          <h4>S &lt; 70 임계가 축퇴합니다</h4>
+          <p class="note">S 는 풀 내 min-max 정규화라 <b>모든 지표에서 동시에 1등이어야</b>
+            100 에 닿습니다. 예시 데이터의 풀 최댓값은 <b>63.0</b> 이고, 그 결과
+            'S &lt; 70' 이 여섯 후보지 전부에 무조건 걸려 변별력이 없습니다.
+            코드가 이 상황을 감지해 심의표에 경고를 찍습니다 —
+            <b>임계값을 포트폴리오 기준으로 재설정할지, 정규화 방식을 바꿀지는 결정이
+            필요한 사항입니다.</b></p>
+        </div></div>
       </div>
 
       <div class="guard rv d1">
-        <div class="seal">PARITY<br/>TESTED</div>
+        <div class="seal">M6<br/>REQUIRED</div>
         <div>
-          <h4>같은 모델임을 테스트가 강제합니다</h4>
-          <p>파이썬과 자바스크립트 두 벌로 구현된 모델을 같은 입력으로 돌려
-            <b>모든 수치</b>를 대조하고, 생성되는 리포트 마크다운이 <b>글자 단위로 같은지</b>까지
-            확인합니다. 예시 데이터만으로는 상·하한 상수가 한 번도 걸리지 않아
-            경계값 픽스처를 따로 두었습니다. 반올림 규칙도 양쪽에 같은 구현으로 맞췄습니다 —
-            파이썬 기본 <code>round()</code> 는 은행가 반올림이라 그대로 두면
-            콘솔과 CLI 점수가 0.1씩 어긋납니다.</p>
+          <h4>사후 보정 루프 없이는 운영하지 마십시오</h4>
+          <p>개점 후 6·12개월 실매출을 수집해 예측 오차를 기록하고, λ·κ·횡단저항을 교정하고,
+            유효 표본 15개에 도달하면 Mode B 에서 Mode A 로 전환합니다.
+            이 루프가 없으면 Mode B 는 순환논리를 벗어나지 못하고 모든 계수가 미검증으로
+            남습니다. 계수 변경은 자동 적용되지 않으며, 변경 이력과 적용 시점을 남겨야
+            과거 심의와 비교가 끊기지 않습니다.</p>
         </div>
       </div>
     </div>
@@ -756,15 +761,16 @@ footer{position:relative;z-index:2;padding:44px 0 64px;border-top:1px solid var(
     <div class="sec" style="padding:0">
       <div class="tag"><span class="no">06</span><span class="nm">다음</span><span class="bar"></span></div>
       <div>
-        <h2 class="rv">후보지 20곳을<br/><span class="hl">3곳으로 줄이는 데</span> 쓰십시오</h2>
+        <h2 class="rv">추정은 틀립니다.<br/><span class="hl">그래서 방어선을 따로 둡니다</span></h2>
         <p class="sub rv d1">
-          그리고 그 3곳은 발로 확인하십시오. 평일과 주말, 오전과 저녁의 통행량,
-          간판이 보이는 각도, 출입 동선, 전기 용량 — 모델이 절대 못 보는 것들입니다.
+          알고리즘은 후보지를 줄이는 도구입니다. 등기부를 떼고, 임대인을 확인하고,
+          오전 7시에 나가 통행량을 세는 일은 사람이 합니다.
+          그 실사가 끝나기 전의 '통과'는 잠정입니다.
         </p>
         <div class="acts rv d2">
           <a class="btn solid" href="app/index.html">콘솔 열기 <span class="ar">→</span></a>
-          <a class="btn line" href="QUICKSTART.md">실행 순서 보기 <span class="ar">→</span></a>
-          <a class="btn line" href="README.md">모델 문서 <span class="ar">→</span></a>
+          <a class="btn line" href="QUICKSTART.md">실행 순서 <span class="ar">→</span></a>
+          <a class="btn line" href="README.md">알고리즘 문서 <span class="ar">→</span></a>
         </div>
       </div>
     </div>
@@ -774,13 +780,13 @@ footer{position:relative;z-index:2;padding:44px 0 64px;border-top:1px solid var(
 <footer>
   <div class="wrap">
     <p class="disc">
-      본 시스템의 매출·손익은 공개 지표와 규칙 기반 모델에 의한 <b>추정치</b>이며 실제 매출을
-      보장하지 않습니다. 추정치가 실제와 ±30% 어긋나는 것은 정상이며, 중요한 것은 후보지 간
-      <b>순위</b>가 뒤집히지 않는 것입니다. 가맹 계약 전 반드시 현장 실사와 가맹사업법상
-      정보공개서(제공 후 14일 숙려기간)를 함께 검토하십시오.
+      <b>사내 한정 · 대외 배포 금지.</b> 본 시스템의 산출물은 내부 의사결정 자료입니다.
+      가맹희망자에게 제공하는 <b>예상매출액 산정서와 수치를 혼용하지 마십시오.</b>
+      제공치가 내부 중앙값 추정치를 초과하지 않도록 별도 통제해야 합니다.
+      매출·손익은 규칙 기반 모델에 의한 추정치이며 실제 매출을 보장하지 않습니다.
     </p>
     <div class="fbar">
-      <a href="app/index.html">상권 분석 콘솔</a>
+      <a href="app/index.html">심의 콘솔</a>
       <a href="README.md">README</a>
       <a href="QUICKSTART.md">QUICKSTART</a>
       <a href="https://github.com/JasonSJo/jasons-company" rel="noopener">저장소 ↗</a>

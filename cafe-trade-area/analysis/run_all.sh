@@ -1,56 +1,68 @@
 #!/usr/bin/env bash
-# 카페 프랜차이즈 상권 분석 — 전체 파이프라인 한 번에
+# 점포개발 심의 알고리즘 v1.0 — 전체 파이프라인
 #
-#   POI 수집 → 후보지 점수화 → 손익 시뮬레이션 → 후보지별 상권조사 리포트
+#   M1 상권 획정 → M2 수요 변수 → M3 경쟁 배분 → M4 매출 추정
+#                                                 ↓
+#                                        M5 판정 로직 → M6 사후 보정
 #
-# 기본은 dry-run(무료·네트워크 없음)이다. --live 를 붙일 때만 카카오 로컬 API 를
-# 호출하며, 이때 KAKAO_REST_KEY 가 필요하다.
+# 기본은 dry-run(무료·네트워크 없음). --live 를 붙일 때만 외부 API 를 호출한다.
 #
-#   ./run_all.sh                                   # 예시 데이터로 전 과정 확인(무료)
-#   ./run_all.sh --sites 내후보지.csv               # 내 데이터로
-#   ./run_all.sh --live --sites 내후보지.csv        # 실제 POI 수집까지
+#   ./run_all.sh                       # 예시 데이터로 전 과정
+#   ./run_all.sh --live                # 등시선·경쟁점 실제 수집까지
+#   ./run_all.sh --stores 기존점.example_초기.csv   # Mode B 경로 확인
 set -euo pipefail
 cd "$(dirname "$0")"
 
-SITES="후보지.example.csv"
-BRAND="brand.example.yaml"
-RADIUS=500
+PY="${PYTHON:-python3}"
 LIVE=""
+SITES="후보지.example.csv"
+STORES="기존점.example.csv"
+ACTUALS="실적.example.csv"
+EXTRA=()
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --sites)  SITES="$2"; shift 2 ;;
-    --brand)  BRAND="$2"; shift 2 ;;
-    --radius) RADIUS="$2"; shift 2 ;;
-    --live)   LIVE="--live"; shift ;;
-    -h|--help) sed -n '2,12p' "$0"; exit 0 ;;
-    *) echo "알 수 없는 옵션: $1" >&2; exit 1 ;;
+    --live)     LIVE="--live"; shift ;;
+    --sites)    SITES="$2"; shift 2 ;;
+    --stores)   STORES="$2"; shift 2 ;;
+    --actuals)  ACTUALS="$2"; shift 2 ;;
+    -h|--help)  sed -n '2,14p' "$0"; exit 0 ;;
+    *)          EXTRA+=("$1"); shift ;;
   esac
 done
 
-PY="${PYTHON:-python3}"
-POIS="output/pois.csv"
+COMMON=(--sites "$SITES" --stores "$STORES" "${EXTRA[@]+"${EXTRA[@]}"}")
 
-echo "════════════════════════════════════════════"
-echo " 상권 분석 파이프라인  (후보지: $SITES)"
-[[ -n "$LIVE" ]] && echo " ⚠ --live: 카카오 로컬 API 를 실제 호출합니다 (쿼터 소모)"
-echo "════════════════════════════════════════════"
+echo "════════════════════════════════════════════════════"
+echo " 점포개발 심의 파이프라인   후보지=$SITES  기존점=$STORES"
+[[ -n "$LIVE" ]] && echo " ⚠ --live: 외부 API 를 실제 호출합니다 (쿼터 소모)"
+echo " 사내 한정 · 대외 배포 금지"
+echo "════════════════════════════════════════════════════"
 
-echo -e "\n[1/4] POI 수집"
-"$PY" collect_pois.py --sites "$SITES" --out "$POIS" --radius "$RADIUS" $LIVE
+echo -e "\n[1/5] M1 등시선"
+"$PY" fetch_isochrones.py --sites "$SITES" --stores "$STORES" $LIVE
 
-echo -e "\n[2/4] 후보지 점수화"
-"$PY" score_sites.py --sites "$SITES" --pois "$POIS" --brand "$BRAND"
+echo -e "\n[2/5] M3 경쟁점"
+"$PY" collect_competitors.py --sites "$SITES" --stores "$STORES" $LIVE
 
-echo -e "\n[3/4] 손익 시뮬레이션"
-"$PY" estimate_revenue.py --sites "$SITES" --pois "$POIS" --brand "$BRAND"
+echo -e "\n[3/5] M1~M5 심의표"
+"$PY" review_sites.py "${COMMON[@]}"
 
-echo -e "\n[4/4] 상권조사 리포트"
-"$PY" build_report.py --sites "$SITES" --pois "$POIS" --brand "$BRAND"
+echo -e "\n[4/5] 후보지별 심의 리포트"
+"$PY" build_report.py "${COMMON[@]}"
 
-echo -e "\n✅ 완료 — output/ 을 확인하세요"
-echo "   · output/상권_후보지_순위.md      순위·등급 한눈에"
-echo "   · output/손익_시뮬레이션.md       매출·손익·민감도"
-echo "   · output/reports/                후보지별 제출용 리포트"
+echo -e "\n[5/5] M6 사후 보정"
+if [[ -f "$ACTUALS" ]]; then
+  "$PY" calibrate.py "${COMMON[@]}" --actuals "$ACTUALS"
+else
+  echo "  실적 CSV($ACTUALS)가 없어 건너뜁니다."
+  echo "  ⛔ M6 없이는 Mode B 가 순환논리를 벗어나지 못합니다. 개점 후 실적을 반드시 수집하십시오."
+fi
+
+echo -e "\n✅ 완료 — output/ 확인"
+echo "   · output/심의표.md          판정 한눈에"
+echo "   · output/reports/           후보지별 심의 리포트"
+echo "   · output/보정_제안.md        계수 교정 제안(사람이 반영)"
 echo
-echo "사람이 해야 할 일: 현장 실사(주차·동선·간판 가시성) · 임대조건 협상 · 최종 출점 결정"
+echo "사람이 해야 할 일: 07~09시 현장 통행량 실측 · 등기/임대인/소송/인허가 실사 ·"
+echo "                  임대조건 협상 · 최종 출점 결정"
