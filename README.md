@@ -22,7 +22,9 @@
 
 ## 배포
 `.github/workflows/deploy-pages.yml` 가 `content-agency/` 를 사이트 루트로,
-`cafe-trade-area/app/` 를 `/cafe-trade-area/app/` 로 GitHub Pages 에 배포한다.
+`cafe-trade-area/` 의 소개·문서를 `/cafe-trade-area/` 로 GitHub Pages 에 배포한다.
+**심의 콘솔(`cafe-trade-area/app/`)은 사내 한정 자료라 배포하지 않는다** — 그 경로에는
+안내 페이지(`.github/pages/심의콘솔-안내.html`)만 올라가고, 콘솔은 저장소를 받아 로컬로 연다.
 활성화: **Settings → Pages → Source: GitHub Actions** (한 번), 이후 `main` push 시 자동 배포.
 
 | 주소 | 내용 |
@@ -30,7 +32,7 @@
 | `https://jasonsjo.github.io/jasons-company/` | 콘텐츠 대행 랜딩페이지 |
 | `.../app/` | 콘텐츠 대행 운영 콘솔 |
 | `.../cafe-trade-area/` | 상권분석 알고리즘 소개 |
-| `.../cafe-trade-area/app/` | 심의 콘솔 (사내) |
+| `.../cafe-trade-area/app/` | 안내 페이지 — 심의 콘솔은 배포하지 않음(사내 한정) |
 
 ## 테스트
 ```
