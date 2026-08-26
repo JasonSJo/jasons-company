@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pipeline
 from common import nf, write_json, write_text
-from config import FATAL_FLAGS, MODE_B_WEIGHTS, unvalidated
+from config import FATAL_FLAGS, MODE_B_WEIGHTS, c, overridden, unvalidated
 
 ROOT = Path(__file__).resolve().parent
 MARK = {"통과": "○", "보류": "△", "부결": "✕"}
@@ -59,8 +59,10 @@ def render(res: dict) -> str:
             f"{nf(j['BEP_만원'] or 0)} | "
             f"{nf((j['margin'] or 0) * 100, 1)}% | {nf((j['margin_low'] or 0) * 100, 1)}% | "
             f"{nf(j['카니발']['최대_overlap'] * 100)}% | {'; '.join(j['사유']) or '—'} |")
-    L += ["", "> 금액 단위 만원. 판정 기준 — 부결: 치명플래그 ≥1 또는 margin < 15% · "
-              "보류: margin < 30% 또는 S < 70 또는 중첩 > 30% 또는 margin_low < 0", ""]
+    L += ["", f"> 금액 단위 만원. 판정 기준 — 부결: 치명플래그 ≥1 또는 "
+              f"margin < {nf(c('부결_마진') * 100)}% · "
+              f"보류: margin < {nf(c('보류_마진') * 100)}% 또는 S < {nf(c('보류_점수'))} 또는 "
+              f"중첩 > {nf(c('보류_중첩') * 100)}% 또는 margin_low < 0", ""]
 
     for r in cands:
         j, p, a, d, s = r["판정"], r["매출"], r["상권"], r["수요"], r["경쟁"]
@@ -91,6 +93,15 @@ def render(res: dict) -> str:
             L += [f"- {x}" for x in j["비고"]] + [""]
         if r["경고"]:
             L += ["**데이터 경고**"] + [f"- {x}" for x in r["경고"]] + [""]
+
+    ovr = overridden()
+    if ovr:
+        L += ["---", "", "## 콘솔에서 입력한 계수", "",
+              "아래 값은 명세 기본값이 아니라 심의 콘솔에서 사람이 직접 넣은 값입니다. "
+              "이 산출물의 숫자는 전부 이 입력값 위에서 계산되었습니다.", "",
+              "| 계수 | 명세값 | 입력값 |", "|---|---:|---:|"]
+        L += [f"| {k} | {old_v} | **{new_v}** |" for k, old_v, new_v in sorted(ovr)]
+        L += [""]
 
     L += ["---", "", "## 미검증 계수", "",
           "아래 값은 실증 근거가 아닌 실무 판단 초기값입니다. M6 사후 보정 루프로 "
@@ -142,6 +153,7 @@ def export(res: dict) -> dict:
     m = res["모델"]
     return {
         "생성": "review_sites.py", "모드": res["모드"], "설정": res["설정"],
+        "입력계수": {k: {"명세값": o, "입력값": n} for k, o, n in overridden()},
         "모델": ({"표본수": m["표본수"], "R2": m["R2"], "특징": m["특징"],
                  "beta": m["beta"], "CV": {k: v for k, v in m["CV"].items() if k != "잔차"},
                  "잔차": m["잔차"]} if m and "beta" in m else m),

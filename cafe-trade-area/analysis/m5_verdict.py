@@ -134,7 +134,7 @@ def judge(site: dict, revenue: dict, settings: dict, S: float,
         notes.append(
             f"⛔ S 게이트 축퇴 — 풀 전체 S 최댓값이 {nf(s_pool_max, 1)} 로 임계값 "
             f"{nf(c('보류_점수'))} 에 못 미칩니다. S 는 풀 내 min-max 정규화라 모든 지표에서 "
-            f"동시에 1등이어야 100 에 닿습니다. 지금 조건에서는 'S < 70' 이 모든 후보지에 "
+            f"동시에 1등이어야 100 에 닿습니다. 지금 조건에서는 'S < {nf(c('보류_점수'))}' 이 모든 후보지에 "
             f"무조건 걸려 변별력이 없습니다. 임계값을 포트폴리오 기준(예: 기준점포 S)으로 "
             f"재설정하거나 정규화 방식을 바꾸는 결정이 필요합니다.")
     if verdict == "통과" and unchecked:

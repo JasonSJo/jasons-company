@@ -33,7 +33,7 @@ const S = (() => {
   const get = () => data;
   const has = () => !!(data && data.후보지 && data.후보지.length);
   const settings = () => (data && data.설정) || {};
-  const kappa = () => 0.5;   // config.잠식계수_카파 — 파이프라인 결과와 같은 값
+  const kappa = () => CFG.c('잠식계수_카파');   // 계수 탭에서 입력하면 그 값을 따른다
 
   const sites = () => (data && data.후보지) || [];
   const find = name => sites().find(r => r.이름 === name) || sites()[0] || null;

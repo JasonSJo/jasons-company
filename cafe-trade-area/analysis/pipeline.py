@@ -20,6 +20,7 @@ import m2_demand as M2
 import m3_huff as M3
 import m4_revenue as M4
 import m5_verdict as M5
+import config as C
 from common import read_csv, to_f
 from config import tier_of
 
@@ -99,9 +100,35 @@ def analyze_all(sites: list[dict], stores: list[dict], isos: dict, cells: list,
     }
 
 
+def merge_ops(settings: dict, ops: dict, record: bool = False) -> dict:
+    """콘솔이 입력한 운영 계수를 설정에 얹는다. 설정 파일 자체는 건드리지 않는다.
+
+    record=True 면 어떤 값이 설정 파일 값을 대체했는지 계수 레지스트리에 남긴다
+    (심의표의 '콘솔에서 입력한 계수' 절이 이것을 읽는다).
+    """
+    if not ops:
+        return settings
+    out = dict(settings)
+    cur = dict(out.get("운영", {}) or {})
+    for group in ("변동비", "고정비"):
+        if not ops.get(group):
+            continue
+        base = cur.get(group, {}) or {}
+        if record:
+            for k, v in ops[group].items():
+                if base.get(k) != v:
+                    C.OVERRIDDEN[f"운영.{group}.{k}"] = (base.get(k), v)
+        cur[group] = {**base, **ops[group]}
+    out["운영"] = cur
+    return out
+
+
 def load_all(base: Path, args) -> dict:
     """CLI 들이 공유하는 입력 로딩. 없는 파일은 조용히 빈 값으로 둔다(경고는 각 모듈이 낸다)."""
     settings = load_settings(args.settings)
+    # 심의 콘솔에서 내보낸 계수.json 이 있으면 계수 레지스트리와 운영 설정에 얹는다.
+    applied = C.apply_overrides(getattr(args, "계수", None) or default_coef_path(base))
+    settings = merge_ops(settings, applied.get("운영"), record=True)
     return {
         "sites": read_csv(Path(args.sites)) if Path(args.sites).exists() else [],
         "stores": read_csv(Path(args.stores)) if Path(args.stores).exists() else [],
@@ -113,6 +140,18 @@ def load_all(base: Path, args) -> dict:
     }
 
 
+# 콘솔이 내보내는 파일명은 ASCII(coefficients.json)다 — 브라우저·OS 에 따라
+# 비ASCII 다운로드명이 통째로 버려지기 때문이다. 손으로 만든 계수.json 도 그대로 받는다.
+COEF_NAMES = ("계수.json", "coefficients.json")
+
+
+def default_coef_path(base: Path) -> Path:
+    for name in COEF_NAMES:
+        if (base / name).exists():
+            return base / name
+    return base / COEF_NAMES[0]
+
+
 def add_common_args(ap, base: Path):
     ap.add_argument("--sites", default=str(base / "후보지.example.csv"))
     ap.add_argument("--stores", default=str(base / "기존점.example.csv"))
@@ -121,4 +160,8 @@ def add_common_args(ap, base: Path):
     ap.add_argument("--competitors", default=str(base / "경쟁점.example.csv"))
     ap.add_argument("--iso", default=str(base / "등시선.example.geojson"))
     ap.add_argument("--settings", default=str(base / "설정.example.yaml"))
+    # 심의 콘솔 '계수' 탭에서 내보낸 파일. 없으면 명세 기본값으로 돈다.
+    ap.add_argument("--계수", dest="계수", default=str(default_coef_path(base)),
+                    help="콘솔에서 입력한 계수 override "
+                         "(기본: 계수.json 또는 coefficients.json, 없으면 무시)")
     return ap

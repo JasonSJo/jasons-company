@@ -11,6 +11,9 @@ app/js/config.js 와 같은 값이어야 한다 (tests/test_parity.py 가 대조
 """
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 # ── 계수 검증 상태 ────────────────────────────────────────────────
 #   MEASURED  실적 데이터로 추정·검증됨
 #   ESTIMATED 실무 판단 초기값 — M6 로 교정해야 함
@@ -64,6 +67,68 @@ def c(name: str) -> float:
 def unvalidated() -> list[tuple[str, float, str]]:
     """미검증(ESTIMATED) 계수 목록 — 리포트 말미에 그대로 싣는다."""
     return [(k, v[0], v[2]) for k, v in COEFFICIENTS.items() if v[1] == ESTIMATED]
+
+
+# ── 콘솔 입력값 덮어쓰기 ──────────────────────────────────────────
+# 심의 콘솔(app/)의 '계수' 탭에서 내보낸 계수.json 을 얹는다. 어떤 계수가 명세값이
+# 아니라 사람이 넣은 값인지가 심의에서 제일 중요하므로, 덮어쓴 항목은 OVERRIDDEN 에
+# 남겨 리포트가 그대로 싣는다.
+OVERRIDDEN: dict[str, tuple[float, float]] = {}   # 이름 -> (명세값, 입력값)
+
+
+def apply_overrides(path) -> dict:
+    """계수.json 을 읽어 레지스트리에 얹는다. 파일이 없으면 아무것도 하지 않는다.
+
+    반환: {"계수": [...], "브랜드티어가중": [...], "ModeB배점": [...], "운영": {...}}
+    운영 항목은 설정.yaml 소관이라 여기서 병합하지 않고 그대로 돌려준다
+    (pipeline.load_all 이 설정에 얹는다).
+    """
+    p = Path(path)
+    if not p.exists():
+        return {}
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as e:
+        raise SystemExit(f"계수 파일을 읽지 못했습니다: {p} — {e}")
+
+    applied = {"계수": [], "브랜드티어가중": [], "ModeB배점": [], "운영": data.get("운영", {}) or {}}
+
+    for name, value in (data.get("계수") or {}).items():
+        if name not in COEFFICIENTS:
+            raise SystemExit(f"등록되지 않은 계수: {name} ({p})")
+        old, state, desc = COEFFICIENTS[name]
+        COEFFICIENTS[name] = (float(value), state, desc)
+        OVERRIDDEN[name] = (old, float(value))
+        applied["계수"].append(name)
+
+    for tier, value in (data.get("브랜드티어가중") or {}).items():
+        if tier not in BRAND_TIER_WEIGHT:
+            raise SystemExit(f"등록되지 않은 브랜드 티어: {tier} ({p})")
+        old = BRAND_TIER_WEIGHT[tier]
+        BRAND_TIER_WEIGHT[tier] = float(value)          # 참조 유지를 위해 제자리 수정
+        OVERRIDDEN[f"브랜드티어가중.{tier}"] = (old, float(value))
+        applied["브랜드티어가중"].append(tier)
+
+    for axis, items in (data.get("ModeB배점") or {}).items():
+        if axis not in MODE_B_WEIGHTS:
+            raise SystemExit(f"등록되지 않은 배점 축: {axis} ({p})")
+        for key, value in (items or {}).items():
+            if key not in MODE_B_WEIGHTS[axis]:
+                raise SystemExit(f"등록되지 않은 배점 항목: {axis}.{key} ({p})")
+            old = MODE_B_WEIGHTS[axis][key]
+            MODE_B_WEIGHTS[axis][key] = float(value)
+            OVERRIDDEN[f"ModeB배점.{axis}.{key}"] = (old, float(value))
+            applied["ModeB배점"].append(f"{axis}.{key}")
+
+    # 운영 계수는 설정.yaml 소관이라 여기서 병합하지 않지만, 사람이 넣은 값이라는
+    # 사실은 똑같이 남겨야 한다 — 명세값 자리는 설정 파일이 쥐고 있으므로 병합하는
+    # 쪽(pipeline.merge_ops)이 채운다.
+    return applied
+
+
+def overridden() -> list[tuple[str, float, float]]:
+    """콘솔에서 입력해 명세값을 대체한 계수 — (이름, 명세값, 입력값)."""
+    return [(k, v[0], v[1]) for k, v in OVERRIDDEN.items()]
 
 
 # ── M3 브랜드 티어 가중 (교차탄력) ────────────────────────────────

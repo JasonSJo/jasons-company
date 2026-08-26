@@ -4,8 +4,11 @@
    여기만 두 벌이므로 analysis/tests/test_m5_parity.py 가 두 구현을 대조한다. */
 const M5 = (() => {
 
-  // 명세 고정값 — config.py 와 같아야 한다
-  const 부결_마진 = 0.15, 보류_마진 = 0.30, 보류_점수 = 70.0, 보류_중첩 = 0.30;
+  /* 판정 임계값. 기본값은 명세 고정값이고 config.py 와 같아야 한다.
+     콘솔에서는 계수 레지스트리(config.js)가 사용자 입력값으로 덮어쓸 수 있고,
+     레지스트리가 없는 환경(node 대조 러너)에서는 아래 기본값이 그대로 쓰인다. */
+  const 기본임계 = { 부결_마진: 0.15, 보류_마진: 0.30, 보류_점수: 70.0, 보류_중첩: 0.30 };
+  const K = n => (typeof CFG !== 'undefined' && CFG && CFG.c) ? CFG.c(n) : 기본임계[n];
   const FATAL = [
     ['근저당_과다', '등기부상 근저당 과다 또는 선순위 권리로 보증금 회수 불확실'],
     ['임대인_불일치', '임대인이 실소유자와 불일치 (전대차 구조·자기거래 정황)'],
@@ -61,6 +64,8 @@ const M5 = (() => {
 
   /* 명세의 3단 분기. 치명 플래그는 점수·매출과 무관하게 단독으로 부결시킨다. */
   function judge(site, revenue, settings, S, overlaps, kappa, sPoolMax) {
+    const 부결_마진 = K('부결_마진'), 보류_마진 = K('보류_마진');
+    const 보류_점수 = K('보류_점수'), 보류_중첩 = K('보류_중첩');
     const v = variableRate(settings);
     const fc = fixedCost(site, settings);
     const bep = v < 1 ? fc.F / (1 - v) : null;
@@ -108,7 +113,7 @@ const M5 = (() => {
     if (sPoolMax !== null && sPoolMax !== undefined && sPoolMax < 보류_점수) {
       notes.push(`⛔ S 게이트 축퇴 — 풀 전체 S 최댓값이 ${nf(sPoolMax, 1)} 로 임계값 ` +
         `${nf(보류_점수)} 에 못 미칩니다. S 는 풀 내 min-max 정규화라 모든 지표에서 ` +
-        `동시에 1등이어야 100 에 닿습니다. 지금 조건에서는 'S < 70' 이 모든 후보지에 ` +
+        `동시에 1등이어야 100 에 닿습니다. 지금 조건에서는 'S < ${nf(보류_점수)}' 이 모든 후보지에 ` +
         `무조건 걸려 변별력이 없습니다. 임계값을 포트폴리오 기준(예: 기준점포 S)으로 ` +
         `재설정하거나 정규화 방식을 바꾸는 결정이 필요합니다.`);
     }
@@ -130,8 +135,10 @@ const M5 = (() => {
     };
   }
 
-  return { judge, variableRate, fixedCost, cannibalization, fatalFlags, unchecked, f,
-           상수: { 부결_마진, 보류_마진, 보류_점수, 보류_중첩 } };
+  const 상수 = () => ({ 부결_마진: K('부결_마진'), 보류_마진: K('보류_마진'),
+                       보류_점수: K('보류_점수'), 보류_중첩: K('보류_중첩') });
+
+  return { judge, variableRate, fixedCost, cannibalization, fatalFlags, unchecked, f, 상수 };
 })();
 
 if (typeof module !== 'undefined' && module.exports) module.exports = M5;
