@@ -1,0 +1,34 @@
+name: 상권 분석 모델 테스트
+
+# 모델은 파이썬(analysis/common.py)과 자바스크립트(app/js/model.js) 두 벌로 구현돼 있다.
+# 한쪽만 고치면 콘솔과 CLI 의 숫자가 갈리므로, 대조 테스트를 CI 에서 강제한다.
+
+on:
+  push:
+    paths: ["cafe-trade-area/**", ".github/workflows/test.yml"]
+  pull_request:
+    paths: ["cafe-trade-area/**", ".github/workflows/test.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: 의존성 설치
+        run: pip install -r cafe-trade-area/analysis/requirements.txt
+      - name: 단위 테스트 + 파이썬↔웹앱 대조
+        working-directory: cafe-trade-area/analysis
+        run: python -m unittest discover -s tests -t . -v
+      - name: 파이프라인 스모크 (dry-run, 네트워크 없음)
+        working-directory: cafe-trade-area/analysis
+        run: ./run_all.sh
