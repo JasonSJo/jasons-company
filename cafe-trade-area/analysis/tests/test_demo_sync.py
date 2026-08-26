@@ -12,6 +12,7 @@ import json
 import shutil
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -19,16 +20,35 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 ROOT = Path(__file__).resolve().parent.parent
 DEMO = ROOT.parent / "app" / "js" / "demo.js"
-OUT = ROOT / "output" / "심의결과.json"
 
 
 class TestDemoSync(unittest.TestCase):
-    def setUp(self):
+    """대조 기준을 output/ 에서 읽지 않고 매번 새로 만든다.
+
+    output/심의결과.json 은 누가 마지막에 무엇으로 돌렸는지에 따라 내용이 다르다.
+    콘솔에서 후보지 입력값이나 계수를 고쳐 내보낸 뒤 `--sites`/`--계수` 로 한 번만
+    돌려도 그 결과가 남아, 데모가 멀쩡한데도 이 테스트가 깨진다.
+    그래서 기본 입력으로 임시 폴더에 새로 뽑아 대조한다.
+    """
+
+    @classmethod
+    def setUpClass(cls):
         if not shutil.which("node"):
-            self.skipTest("node 가 없어 demo.js 대조를 건너뜁니다")
-        if not OUT.exists():
-            subprocess.run([sys.executable, "review_sites.py"], cwd=ROOT,
-                           capture_output=True, timeout=300, check=True)
+            raise unittest.SkipTest("node 가 없어 demo.js 대조를 건너뜁니다")
+        cls._tmp = tempfile.TemporaryDirectory()
+        out = Path(cls._tmp.name) / "심의결과.json"
+        subprocess.run([sys.executable, "review_sites.py",
+                        "--json", str(out),
+                        "--out", str(Path(cls._tmp.name) / "심의표.md"),
+                        "--계수", str(Path(cls._tmp.name) / "없는계수.json")],
+                       cwd=ROOT, capture_output=True, timeout=300, check=True)
+        cls.want = json.loads(out.read_text(encoding="utf-8"))
+
+    @classmethod
+    def tearDownClass(cls):
+        tmp = getattr(cls, "_tmp", None)
+        if tmp:
+            tmp.cleanup()
 
     def demo(self):
         code = "const d=require(process.argv[1]);process.stdout.write(JSON.stringify(d.DEMO));"
@@ -38,7 +58,7 @@ class TestDemoSync(unittest.TestCase):
         return json.loads(p.stdout)
 
     def test_demo_matches_pipeline_output(self):
-        want = json.loads(OUT.read_text(encoding="utf-8"))
+        want = self.want
         got = self.demo()
         hint = "node app/js/gen_demo.js 로 다시 구우세요"
         self.assertEqual(got["모드"], want["모드"], hint)

@@ -46,8 +46,8 @@ cafe-trade-area/
 │   ├── fetch_isochrones.py   등시선 생성 (라우팅 API)
 │   ├── collect_competitors.py 경쟁점 수집 (카카오 로컬 API)
 │   ├── make_fixtures.py      예시 데이터 생성기
-│   └── tests/                모듈·통합·파리티 테스트 100개
-└── app/                      사내 심의 콘솔 (심의결과 뷰어 · M5 시뮬레이터 · 계수 입력)
+│   └── tests/                모듈·통합·파리티 테스트 106개
+└── app/                      사내 심의 콘솔 (심의결과 뷰어 · M5 시뮬레이터 · 계수·입력값 수정)
 ```
 
 ## 모듈
@@ -128,7 +128,11 @@ pip install -r requirements.txt        # PyYAML 하나
 산출물은 `analysis/output/` 에 쌓입니다 — 심의표·후보지별 리포트·보정 제안.
 콘솔에서 보려면 `app/index.html` 을 열고 `output/심의결과.json` 을 불러오면 됩니다.
 
-계수를 바꿔 보려면 코드를 고치지 말고 콘솔 **계수 입력** 탭을 쓰십시오. M5 임계값·
+후보지 한 곳의 실사값(임대료·좌석수·치명 플래그 등)은 콘솔 **후보지** 탭 하단
+'입력값 수정' 에서 고치고, 필요하면 **후보지 CSV 내보내기** 후
+`python3 review_sites.py --sites sites.csv` 로 다시 돌립니다.
+
+모든 후보지에 공통인 계수를 바꿔 보려면 콘솔 **계수 입력** 탭을 쓰십시오. M5 임계값·
 잠식계수·운영 계수는 즉시 다시 계산되고, M1~M4·M6 계수와 배점은
 `coefficients.json` 으로 내보내 파이프라인에 넣습니다:
 
@@ -186,6 +190,8 @@ cd analysis && python3 -m unittest discover -s tests -t .
   치명 플래그 동작, CLI 산출물의 통제 문구
 - `test_m5_parity.py` — 파이썬 ↔ 콘솔 M5 판정 산술 대조. 무작위 400건 +
   임계 경계(margin 0.15/0.30 · S 70 · overlap 0.30) 정확히 위/아래
+- `test_site_inputs.py` — 콘솔이 후보지 필드마다 표시하는 '즉시 반영 / 재실행 필요 /
+  미사용' 을 파이프라인 소스와 대조. '미사용' 이라 적힌 값을 실제로 읽는 모듈이 있으면 실패
 - `test_config_parity.py` — 파이썬 ↔ 콘솔 계수 레지스트리 대조. 명세 기본값·검증
   상태·설명이 갈리지 않는지, '즉시 반영' 표시가 M5 계수에만 붙는지
 - `test_overrides.py` — 콘솔이 내보낸 계수 파일이 실제로 판정을 바꾸는지,

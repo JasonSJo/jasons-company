@@ -286,3 +286,13 @@ td.neg{color:var(--no);font-weight:600}
 .sumline b{font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums}
 .sumline.bad b{color:var(--no)}
 .flip{font-size:11.5px;color:var(--brand-ink);font-weight:700;white-space:nowrap}
+
+/* ── 후보지 입력값 수정 ─────────────────────── */
+.tab .pill.edit{background:var(--hold)}
+.tab[aria-selected="true"] .pill.edit{background:rgba(255,255,255,.35)}
+.cfg select{width:auto;min-width:112px;padding:5px 8px;font-size:13px}
+.cfg tr.edited select{border-color:var(--brand);font-weight:700}
+.cfg td .lbl{font-weight:600}
+.scope.none{color:var(--fg-mute)}
+.inp-head{display:flex;justify-content:space-between;gap:12px;align-items:baseline;flex-wrap:wrap}
+.inp-head .acts{display:flex;gap:6px;flex-wrap:wrap}

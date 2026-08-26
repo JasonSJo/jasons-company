@@ -17,28 +17,37 @@ const App = (() => {
   const gov = () => (settings().거버넌스 || {});
   const ops = () => CFG.ops((settings().운영) || {});
 
-  /* 입력한 계수로 M5 를 다시 계산한다.
-     계수를 손대지 않았으면 파이프라인이 낸 판정을 그대로 쓴다 — 화면과 CLI 가 갈리지 않는다. */
+  /* 입력한 계수와 고친 후보지 입력값으로 M5 를 다시 계산한다.
+     둘 다 손대지 않았으면 파이프라인이 낸 판정을 그대로 쓴다 — 화면과 CLI 가 갈리지 않는다. */
+  const recalc = () => CFG.liveDirty() || INP.liveDirty();
+
   function verdictOf(r) {
-    if (!CFG.liveDirty()) return r.판정;
+    if (!recalc()) return r.판정;
     const rev = { 월매출_중앙: (r.매출 || {}).월매출_중앙, 월매출_하한: (r.매출 || {}).월매출_하한 };
-    return M5.judge(r.입력, rev, { 운영: ops() }, r.S,
+    return M5.judge(INP.merged(r), rev, { 운영: ops() }, r.S,
                     (r.판정.카니발.상세 || []).map(x => ({ ...x })),
                     CFG.c('잠식계수_카파'), r.S_풀최대);
   }
-  const flipped = r => CFG.liveDirty() && verdictOf(r).판정 !== r.판정.판정;
+  const flipped = r => recalc() && verdictOf(r).판정 !== r.판정.판정;
 
   /* 계수를 손댔다는 사실은 어느 화면에서도 보여야 한다 — 심의 자리에서 제일 중요한 정보다. */
   function cfgBar() {
-    if (!CFG.anyDirty()) return '';
-    const live = CFG.liveDirty(), pipe = CFG.pipelineDirty();
+    if (!CFG.anyDirty() && !INP.anyDirty()) return '';
+    const live = CFG.liveDirty() || INP.liveDirty();
+    const pipe = CFG.pipelineDirty() || INP.pipelineDirty();
+    const what = [
+      CFG.anyDirty() ? `계수 ${CFG.dirtyCount()}건` : '',
+      INP.anyDirty() ? `후보지 입력값 ${INP.dirtyCount()}건` : '',
+    ].filter(Boolean).join(' · ');
     const msg = [
-      live ? '<b>M5 계수 입력됨</b> 이 화면의 판정은 입력값으로 다시 계산한 결과입니다.' : '',
-      pipe ? '<b>파이프라인 계수 입력됨</b> M1~M4·M6 값은 브라우저에서 다시 계산할 수 없습니다 — 계수.json 을 내보내 파이프라인을 다시 돌려야 반영됩니다.' : '',
+      live ? '<b>판정 다시 계산됨</b> 이 화면의 판정은 손으로 넣은 값으로 계산한 결과입니다.' : '',
+      pipe ? '<b>파이프라인 값 변경</b> M1~M4·M6 로 들어가는 값은 브라우저에서 다시 계산할 수 없습니다 — 파일로 내보내 파이프라인을 다시 돌려야 반영됩니다.' : '',
     ].filter(Boolean).join(' ');
-    return `<div class="cfgbar"><b>계수 ${CFG.dirtyCount()}건 입력</b><span>${msg}</span>
-      <div class="acts"><button class="sm" data-go="coef">계수 보기</button>
-        <button class="sm ghost danger" id="cfg-reset-all">명세값으로</button></div></div>`;
+    return `<div class="cfgbar"><b>${what} 입력</b><span>${msg}</span>
+      <div class="acts">
+        ${CFG.anyDirty() ? '<button class="sm" data-go="coef">계수 보기</button>' : ''}
+        ${INP.anyDirty() ? '<button class="sm" data-go="sites">입력값 보기</button>' : ''}
+        <button class="sm ghost danger" id="cfg-reset-all">원래 값으로</button></div></div>`;
   }
 
   // ── 심의 현황 ─────────────────────────────
@@ -89,7 +98,8 @@ const App = (() => {
     const flip = flipped(r) ? `<div class="flip">파이프라인 ${r.판정.판정} → ${j.판정}</div>` : '';
     return `<tr data-open="${U.esc(r.이름)}">
       <td><span class="vd ${V[j.판정]}">${MARK[j.판정]} ${j.판정}</span>${flip}</td>
-      <td><b>${U.esc(r.이름)}</b><div class="why">${U.esc(r.입력.주소 || '')}</div></td>
+      <td><b>${U.esc(r.이름)}</b><div class="why">${U.esc(r.입력.주소 || '')}</div>
+        ${INP.siteDirty(r) ? `<div class="flip">입력값 ${INP.siteDirty(r)}건 수정</div>` : ''}</td>
       <td class="num">${U.num(r.S, 1)}</td>
       <td class="num">${U.num(p.월매출_중앙, 0)}</td>
       <td class="num">${U.num(j.BEP_만원, 0)}</td>
@@ -128,7 +138,7 @@ const App = (() => {
 
       <div class="verdictbox ${V[j.판정]}">
         <b>${MARK[j.판정]} ${j.판정}</b>
-        ${flipped(r) ? `<div class="flip">입력한 계수로 다시 계산 — 파이프라인 판정은 ${r.판정.판정}</div>` : ''}
+        ${flipped(r) ? `<div class="flip">손으로 넣은 값으로 다시 계산 — 파이프라인 판정은 ${r.판정.판정}</div>` : ''}
         <div>${j.사유.length ? j.사유.map(U.esc).join(' · ') : '부결·보류 조건에 해당하지 않습니다'}</div>
       </div>
 
@@ -184,9 +194,92 @@ const App = (() => {
           ${kv(Object.entries(r.S_축 || {}).map(([k, v]) => [k, U.num(v, 1)]))}
           <p class="hint">실증 회귀가 아닌 임의 배점입니다. 후보지 간 상대 비교로만 쓰십시오.</p>
         </div>
-      </div>`;
+      </div>
+
+      ${inputCard(r)}`;
 
     document.getElementById('pick').onchange = e => { picked = e.target.value; render(); };
+    wireInputs(r);
+  }
+
+  /* ── 후보지 입력값 수정 ─────────────────────
+     후보지 CSV 행을 화면에서 고친다. 임대료·관리비·치명 플래그는 M5 로 바로 들어가
+     판정이 즉시 다시 계산되고, 나머지는 M1~M4 로 들어가므로 CSV 로 내보내
+     파이프라인을 다시 돌려야 반영된다. */
+  const INP_SCOPE = {
+    [INP.콘솔]: '<span class="scope live">즉시 반영</span>',
+    [INP.파이프라인]: '<span class="scope pipe">재실행 필요</span>',
+    [INP.미사용]: '<span class="scope none">미사용</span>',
+  };
+  const FLAG_OPTS = [['Y', '해당'], ['N', '해당 없음'], ['', '미확인']];
+
+  function inputRow(r, k) {
+    const m = INP.meta(k), v = INP.value(r, k) ?? '', ch = INP.changed(r, k);
+    const orig = INP.origin(r, k);
+    const control = m.종류 === 'flag'
+      ? `<select data-inp="${k}">${FLAG_OPTS.map(([val, lb]) =>
+          `<option value="${val}" ${String(v) === val ? 'selected' : ''}>${lb}</option>`).join('')}</select>`
+      : m.종류 === 'num'
+        ? `<input type="number" data-inp="${k}" value="${U.esc(v)}"
+             min="${m.최소}" max="${m.최대}" step="${m.증분}"/>`
+        : `<input type="text" data-inp="${k}" value="${U.esc(v)}"/>`;
+    return `<tr class="${ch ? 'edited' : ''}">
+      <td><span class="lbl">${U.esc(m.라벨)}</span>
+        ${ch ? ` <span class="flip">원본 ${U.esc(String(orig ?? '') || '(빈칸)')}</span>` : ''}
+        <div class="why">${U.esc(m.설명)}</div></td>
+      <td class="num">${control}</td>
+      <td><code>${m.모듈}</code></td>
+      <td>${INP_SCOPE[m.반영]}</td>
+      <td>${ch ? `<button class="sm ghost" data-ri="${k}">되돌리기</button>` : ''}</td>
+    </tr>`;
+  }
+
+  function inputCard(r) {
+    const group = scope => INP.keys().filter(k => INP.meta(k).반영 === scope
+                                                 && k in (r.입력 || {}));
+    const table = (title, note, ks) => ks.length ? `<h3 style="margin-top:16px">${title}</h3>
+      <p class="hint" style="margin-top:0">${note}</p>
+      <div class="tablewrap cfg"><table>
+        <thead><tr><th>항목</th><th class="num">값</th><th>모듈</th><th>반영</th><th></th></tr></thead>
+        <tbody>${ks.map(k => inputRow(r, k)).join('')}</tbody></table></div>` : '';
+
+    const n = INP.siteDirty(r);
+    return `<div class="card" style="margin-top:14px">
+      <div class="inp-head">
+        <h3>입력값 수정 — ${U.esc(r.이름)}</h3>
+        <div class="acts">
+          <button class="sm primary" id="inp-export">후보지 CSV 내보내기</button>
+          ${n ? `<button class="sm ghost" id="inp-reset-site">이 후보지 되돌리기</button>` : ''}
+          ${INP.anyDirty() ? `<button class="sm ghost danger" id="inp-reset-all">전체 되돌리기</button>` : ''}
+        </div>
+      </div>
+      <p class="hint" style="margin-top:2px">실사로 확인한 값을 넣어 보십시오. 원본
+        심의결과는 그대로 두고 고친 값만 따로 얹습니다${n ? ` — 이 후보지 <b>${n}건 수정됨</b>` : ''}.</p>
+
+      ${table('M5 로 들어가는 값', '고치면 이 화면의 판정이 즉시 다시 계산됩니다. 치명 플래그는 하나만 해당해도 점수·매출과 무관하게 단독 부결입니다.', group(INP.콘솔))}
+      ${table('M1~M4 로 들어가는 값', '브라우저가 다시 계산할 수 없습니다(등시선·격자인구·회귀표본 필요). CSV 로 내보내 <code>python3 review_sites.py --sites 후보지.csv</code> 로 다시 돌리십시오.', group(INP.파이프라인))}
+      ${table('알고리즘에 들어가지 않는 값', '심의 참고용으로만 싣는 항목입니다. 고쳐도 어떤 모듈도 이 값을 읽지 않습니다.', group(INP.미사용))}
+    </div>`;
+  }
+
+  function wireInputs(r) {
+    const el = document.getElementById('p-sites');
+    el.querySelectorAll('[data-inp]').forEach(c => {
+      c.onchange = () => { INP.set(r, c.dataset.inp, c.value); afterCoef(); };
+    });
+    el.querySelectorAll('[data-ri]').forEach(b => b.onclick = () => {
+      INP.reset(r, b.dataset.ri); afterCoef();
+    });
+    const b = (id, fn) => { const x = document.getElementById(id); if (x) x.onclick = fn; };
+    b('inp-reset-site', () => { INP.reset(r); U.toast(`${r.이름} 입력값을 되돌렸습니다`); afterCoef(); });
+    b('inp-reset-all', () => {
+      if (!confirm('모든 후보지의 수정한 입력값을 지웁니다. 계속할까요?')) return;
+      INP.reset(); U.toast('입력값을 전부 되돌렸습니다'); afterCoef();
+    });
+    b('inp-export', () => {
+      U.download('sites.csv', INP.toCSV(S.sites()), 'text/csv');
+      U.toast('sites.csv 저장 — python3 review_sites.py --sites sites.csv 로 다시 돌리세요');
+    });
   }
 
   const kv = pairs => `<div class="kv">${pairs.map(([k, v]) =>
@@ -205,7 +298,7 @@ const App = (() => {
     const o = ops(), fx = o.고정비, vb = o.변동비;
     const p = r.매출 || {};
     return {
-      rent: M5.f(r.입력.월임대료_만원),
+      rent: M5.f(INP.merged(r).월임대료_만원),
       sales: p.월매출_중앙 || 0,
       lowRatio: p.월매출_중앙 ? (p.월매출_하한 / p.월매출_중앙) : 0.8,
       cogs: M5.f(vb.원재료율, 0.35),
@@ -215,7 +308,7 @@ const App = (() => {
 
   function simJudge(r, k) {
     const o = ops();
-    const site = { ...r.입력, 월임대료_만원: k.rent };
+    const site = { ...INP.merged(r), 월임대료_만원: k.rent };
     const cfg = {
       운영: {
         변동비: { ...o.변동비, 원재료율: k.cogs },
@@ -589,6 +682,9 @@ python3 review_sites.py --계수 /경로/coefficients.json</pre></div>`;
     const pc = document.getElementById('pill-coef');
     pc.textContent = CFG.dirtyCount();
     pc.classList.toggle('hide', !CFG.dirtyCount());
+    const pi = document.getElementById('pill-inputs');
+    pi.textContent = INP.dirtyCount();
+    pi.classList.toggle('hide', !INP.dirtyCount());
 
     if (tab === 'status') renderStatus();
     else if (tab === 'sites') renderSites();
@@ -598,8 +694,8 @@ python3 review_sites.py --계수 /경로/coefficients.json</pre></div>`;
 
     const rb = document.getElementById('cfg-reset-all');
     if (rb) rb.onclick = () => {
-      if (!confirm('입력한 계수를 모두 지우고 명세 기본값으로 되돌립니다. 계속할까요?')) return;
-      CFG.reset(); U.toast('명세값으로 되돌렸습니다'); afterCoef();
+      if (!confirm('손으로 넣은 계수와 후보지 입력값을 모두 지우고 원래 값으로 되돌립니다. 계속할까요?')) return;
+      CFG.reset(); INP.reset(); U.toast('원래 값으로 되돌렸습니다'); afterCoef();
     };
   }
 
