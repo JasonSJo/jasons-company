@@ -160,7 +160,8 @@ td input{padding:5px 8px;font-size:12.5px;border-radius:7px}
 /* ── 점수 막대 ─────────────────────────────── */
 .sbar{display:flex;align-items:center;gap:9px}
 .sbar .track{flex:1;height:7px;border-radius:999px;background:var(--bg-soft);border:1px solid var(--border);overflow:hidden;min-width:56px}
-.sbar .fill{height:100%;background:var(--brand);border-radius:999px}
+/* span 은 기본이 인라인이라 width/height 가 먹지 않는다 — 반드시 block 으로. */
+.sbar .fill{display:block;height:100%;background:var(--brand);border-radius:999px}
 .sbar .fill.lo{background:var(--no)} .sbar .fill.mid{background:var(--hold)} .sbar .fill.hi{background:var(--ok)}
 .sbar .val{font-size:12px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--fg-soft);min-width:52px;text-align:right}
 
@@ -199,3 +200,38 @@ td input{padding:5px 8px;font-size:12.5px;border-radius:7px}
 .risk{font-size:12.5px;border-radius:8px;padding:8px 11px;border:1px solid var(--border);background:var(--bg-soft);color:var(--fg-soft)}
 .risk.high{border-color:var(--no);color:var(--no);background:transparent;font-weight:700}
 .risk.warn{border-color:var(--hold);color:var(--hold);background:transparent;font-weight:700}
+
+/* ═══════════════════════════════════════════════════════════════
+   측량 도면 팔레트 — 랜딩(../index.html)과 같은 시각 언어를 쓴다.
+   위쪽 토큰 정의를 덮어쓰기만 하므로 마크업·컴포넌트 규칙은 그대로다.
+   (같은 명시도의 뒤 규칙이 이기므로 위의 다크모드 블록도 함께 무력화된다 —
+    이 콘솔은 종이 한 가지 표정으로 고정한다.)
+   ═══════════════════════════════════════════════════════════════ */
+:root,
+:root:where(*){
+  --bg:#efeae0; --bg-soft:#e6dfd1; --bg-card:#f5f2ea; --border:#cabfad;
+  --fg:#17130f; --fg-soft:#4b423a; --fg-mute:#8a7f6e;
+  --brand:#9a3b1b; --brand-ink:#6f2911; --brand-soft:#e8dbd1;
+  --accent:#2f5d50; --warn:#b0822a;
+  --ok:#2f5d50; --hold:#b0822a; --no:#a8231c;
+  --shadow:0 1px 0 rgba(23,19,15,.06);
+  --radius:2px;
+}
+body{
+  font-family:'IBM Plex Sans KR','Pretendard',-apple-system,'Malgun Gothic',sans-serif;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.82' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='220' height='220' filter='url(%23n)' opacity='.16'/%3E%3C/svg%3E");
+}
+h1,h2,h3,h4,.logo b,.kpi .v,.panel-head h2{font-family:'Hahmlet','Nanum Myeongjo','Apple SD Gothic Neo',serif}
+.logo .mark{border-radius:50%;font-family:'IBM Plex Mono',monospace;font-size:15px}
+.tab{border-radius:2px}
+.tab[aria-selected="true"]{background:var(--brand);color:#fff;border-color:var(--brand)}
+.tab[aria-selected="true"] .pill{background:rgba(255,255,255,.22)}
+.pill,.badge{border-radius:2px}
+button,.btn,input,select,textarea{border-radius:2px}
+/* 수치는 전부 모노스페이스로 — 도면의 계측값처럼 읽히게 한다 */
+.kpi .v,.pipe .step b,td.num,.sbar .val,.slider .out,.pl .n,.grade,.map-lbl{
+  font-family:'IBM Plex Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums;
+}
+.kpi .v{letter-spacing:-.04em}
+th{letter-spacing:.12em;font-family:'IBM Plex Mono',monospace;text-transform:uppercase;font-size:10px}
+.card,.kpi,.tablewrap,.mapwrap,.pipe .step{box-shadow:none}

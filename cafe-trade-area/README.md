@@ -6,6 +6,7 @@
 
 ```
 cafe-trade-area/
+├── index.html               # 소개 페이지 (모델과 산출물을 설명 · 콘솔로 연결)
 ├── QUICKSTART.md            # ★ 후보지 수집부터 출점 심의까지 순서대로
 ├── analysis/                # 파이썬 자동화 파이프라인
 │   ├── common.py            #   ★ 모델 본체 — 점수·매출·손익 공식의 단일 원천
@@ -74,6 +75,8 @@ pip install -r requirements.txt          # PyYAML 하나뿐
 - `상권_후보지_순위.md` — 순위·등급·추정 손익 한눈에
 - `손익_시뮬레이션.md` — 손익계산서 + 손익분기 역산 + 민감도
 - `reports/상권조사_*.md` — 후보지별 제출용 리포트
+
+시스템이 무엇을 계산하는지 먼저 훑어보려면 `index.html`(소개 페이지)을 여세요.
 
 **터미널 없이 하려면** `app/index.html` 을 열면 됩니다. 같은 계산을 브라우저에서 하고,
 결과를 CLI 입력 형식 그대로 내보냅니다. → [app/README.md](app/README.md)

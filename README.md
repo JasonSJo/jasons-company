@@ -24,6 +24,7 @@
 |---|---|
 | `https://jasonsjo.github.io/jasons-company/` | 콘텐츠 대행 랜딩페이지 |
 | `.../app/` | 콘텐츠 대행 운영 콘솔 |
+| `.../cafe-trade-area/` | 상권 분석 소개 페이지 |
 | `.../cafe-trade-area/app/` | 상권 분석 콘솔 |
 
 ## 테스트

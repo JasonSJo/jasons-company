@@ -37,7 +37,7 @@ jobs:
           mkdir -p _site/cafe-trade-area
           cp -r content-agency/. _site/
           cp -r cafe-trade-area/app _site/cafe-trade-area/app
-          cp cafe-trade-area/README.md cafe-trade-area/QUICKSTART.md _site/cafe-trade-area/
+          cp cafe-trade-area/index.html cafe-trade-area/README.md cafe-trade-area/QUICKSTART.md _site/cafe-trade-area/
       - name: Upload site
         uses: actions/upload-pages-artifact@v3
         with:

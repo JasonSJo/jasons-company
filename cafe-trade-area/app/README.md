@@ -53,12 +53,20 @@ python collect_pois.py --live …  →  output/pois.csv
 (후보지 6곳 · POI 36건 · 브랜드 파라미터). 전체 흐름을 눌러본 뒤 **전체 초기화** 로 비우고
 실제 데이터를 넣으세요.
 
+## 생김새
+
+소개 페이지(`../index.html`)와 같은 **측량 도면** 시각 언어를 씁니다 — 종이 바탕에 잉크 먹색,
+로스트 시에나 단일 시그널, 모든 수치는 모노스페이스 조판. 콘솔 쪽은 기존 컴포넌트 규칙은
+그대로 두고 `styles.css` 끝에서 **토큰만 덮어써** 맞췄습니다.
+본문 `Hahmlet` / `IBM Plex Sans KR` / `IBM Plex Mono` 는 Google Fonts 로 불러오며,
+차단되거나 오프라인이면 시스템 한글 폰트로 안전하게 내려갑니다.
+
 ## 파일
 
 ```
 app/
 ├── index.html      # 화면 골격(탭 6개)
-├── styles.css      # content-agency/app 과 같은 디자인 토큰
+├── styles.css      # 공통 컴포넌트 + 측량 도면 팔레트 오버라이드
 └── js/
     ├── util.js       # CSV 파싱·파일 입출력·포맷
     ├── model.js      # ★ analysis/common.py 의 1:1 포팅 (점수·매출·손익)
