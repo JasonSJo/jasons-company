@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "kakao-chatgpt": {
+      "command": "python3",
+      "args": ["${CLAUDE_PROJECT_DIR}/content-agency/automation/mcp_server.py"],
+      "env": {
+        "KAKAO_REST_API_KEY": "${KAKAO_REST_API_KEY:-}",
+        "KAKAO_ACCESS_TOKEN": "${KAKAO_ACCESS_TOKEN:-}",
+        "KAKAO_REFRESH_TOKEN": "${KAKAO_REFRESH_TOKEN:-}",
+        "OPENAI_API_KEY": "${OPENAI_API_KEY:-}",
+        "OPENAI_MODEL": "${OPENAI_MODEL:-}"
+      }
+    }
+  }
+}
