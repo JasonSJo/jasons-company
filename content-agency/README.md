@@ -10,6 +10,11 @@
 content-agency/
 ├── index.html              # 서비스 소개 랜딩페이지 (자체 완결형, 열어서 바로 확인)
 ├── README.md               # 이 문서
+├── app/                    # ★ 운영 콘솔 웹앱 — 타깃·캘린더·검수·리포트를 한 화면에서
+│   ├── index.html          #   빌드 없이 그냥 열면 동작 (데이터는 브라우저에만 저장)
+│   ├── styles.css
+│   ├── js/                 #   파이썬 도구들의 로직을 그대로 포팅
+│   └── README.md
 ├── playbooks/              # 업종별 콘텐츠 전략 플레이북
 │   ├── 요식업.md
 │   ├── 병의원.md
@@ -52,6 +57,11 @@ content-agency/
 `run_pipeline.sh`(캘린더→생성→규제검출 자동) → `review.html`(승인)
 → `publish.py` → `output/publish/`(붙여넣기 발행) → `report.py`(월간 리포트).
 
+**웹앱으로 돌리기:** 같은 흐름을 터미널 없이 브라우저에서 관리하려면 `app/index.html`
+(운영 콘솔)을 여세요. 타깃 점수화·캘린더 생성·검수·리포트가 한 화면에 있고, 결과물은
+`generate_content.py`·`publish.py`·`score_prospects.py` 의 입력 형식 그대로 내보내집니다.
+자세한 내용은 **[app/README.md](app/README.md)**.
+
 전체 자동화 한 줄: `cd automation && ./run_all.sh --days 30 --live`
 → 캘린더·생성·규제검출·자동승인·발행패키지·리포트까지 실행. 사람은 (a)의료·법률 보류분 검수 (b)플랫폼 게시 (c)영업만.
 (무료 확인은 `--live` 빼고 실행)
@@ -66,6 +76,12 @@ GitHub Pages 로 무료 배포한다 (Settings → Pages → Source: GitHub Acti
 ## 랜딩페이지 미리보기
 
 `index.html`를 브라우저로 열면 됩니다. 다크/라이트 모드 자동 대응, 반응형, 외부 의존성 없음.
+
+## 운영 콘솔 (웹앱)
+
+`app/index.html` — 영업 파이프라인과 콘텐츠 생산을 한 화면에서 관리하는 내부용 웹앱.
+설치·서버·계정 없이 브라우저에서 동작하고, 데이터는 그 브라우저의 localStorage 에만 남습니다.
+처음이라면 **데모 데이터** 버튼으로 전체 흐름을 먼저 눌러보세요. → [app/README.md](app/README.md)
 
 ## 이 세트로 자동화되는 것 / 안 되는 것
 

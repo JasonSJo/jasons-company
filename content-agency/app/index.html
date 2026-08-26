@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>운영 콘솔 · 콘텐츠하다</title>
+<meta name="description" content="타깃 발굴부터 콘텐츠 캘린더·검수·발행·월간 리포트까지, 콘텐츠 대행 운영을 한 화면에서. 설치 없이 브라우저에서 동작합니다."/>
+<meta name="robots" content="noindex"/>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%233b5bff'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='700' fill='%23fff' text-anchor='middle'%3EC%3C/text%3E%3C/svg%3E"/>
+<link rel="stylesheet" href="styles.css"/>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <div class="top-in">
+      <a class="logo" href="../index.html"><span class="mark">C</span>콘텐츠하다<small>운영 콘솔</small></a>
+      <div class="top-actions">
+        <button class="sm ghost" id="btn-demo">데모 데이터</button>
+        <button class="sm ghost" id="btn-backup">백업 내보내기</button>
+        <button class="sm ghost" id="btn-restore">복원</button>
+        <button class="sm ghost danger" id="btn-reset">전체 초기화</button>
+      </div>
+    </div>
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" data-tab="dash" aria-selected="true">대시보드</button>
+      <button class="tab" role="tab" data-tab="prospects" aria-selected="false">타깃·영업<span class="pill" id="pill-prospects">0</span></button>
+      <button class="tab" role="tab" data-tab="calendar" aria-selected="false">콘텐츠 캘린더<span class="pill" id="pill-calendar">0</span></button>
+      <button class="tab" role="tab" data-tab="review" aria-selected="false">검수<span class="pill" id="pill-review">0</span></button>
+      <button class="tab" role="tab" data-tab="report" aria-selected="false">월간 리포트</button>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <!-- ══ 대시보드 ══ -->
+  <section id="panel-dash" class="panel">
+    <div class="panel-head">
+      <div>
+        <h2>대시보드</h2>
+        <p>영업 파이프라인과 콘텐츠 생산 현황을 한눈에. 모든 데이터는 이 브라우저에만 저장되며 서버로 전송되지 않습니다.</p>
+      </div>
+    </div>
+    <div class="grid g4" id="kpis"></div>
+    <div class="card" style="margin-top:14px">
+      <h3>영업 파이프라인</h3>
+      <div class="pipe" id="pipe"></div>
+    </div>
+    <div class="grid g2" style="margin-top:14px">
+      <div class="card">
+        <h3>다음 액션</h3>
+        <div id="next-actions"></div>
+      </div>
+      <div class="card">
+        <h3>이번 주 발행 예정</h3>
+        <div id="week-ahead"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══ 타깃·영업 ══ -->
+  <section id="panel-prospects" class="panel hide">
+    <div class="panel-head">
+      <div>
+        <h2>타깃·영업 파이프라인</h2>
+        <p>타깃리스트 CSV를 올리면 콘텐츠 니즈 점수(=전환 가능성)로 자동 정렬합니다. 점수 로직은 <code>automation/score_prospects.py</code> 와 동일합니다.</p>
+      </div>
+      <div class="acts">
+        <button class="sm" id="p-add">직접 추가</button>
+        <button class="sm" id="p-import">CSV 가져오기</button>
+        <button class="sm" id="p-export-csv">CSV 내보내기</button>
+        <button class="sm primary" id="p-export-md">우선순위 MD</button>
+      </div>
+    </div>
+    <div class="card" style="margin-bottom:14px">
+      <div class="grid g4">
+        <label class="field"><span>검색</span><input id="p-q" placeholder="상호·지역·연락처"/></label>
+        <label class="field"><span>업종</span><select id="p-industry"></select></label>
+        <label class="field"><span>단계</span><select id="p-stage"></select></label>
+        <label class="field"><span>정렬</span><select id="p-sort">
+          <option value="score">니즈 점수 높은 순</option>
+          <option value="name">상호 가나다순</option>
+          <option value="stage">파이프라인 단계순</option>
+          <option value="updated">최근 수정순</option>
+        </select></label>
+      </div>
+      <p class="hint" id="p-summary"></p>
+    </div>
+    <div id="p-list"></div>
+  </section>
+
+  <!-- ══ 캘린더 ══ -->
+  <section id="panel-calendar" class="panel hide">
+    <div class="panel-head">
+      <div>
+        <h2>콘텐츠 캘린더</h2>
+        <p>업체 프로필 하나로 발행 캘린더를 자동 생성합니다. 업종별 토픽 공식과 주간 발행 리듬은 <code>automation/build_calendar.py</code> 와 동일하며, 내려받은 YAML은 <code>generate_content.py</code> 에 그대로 입력할 수 있습니다.</p>
+      </div>
+      <div class="acts">
+        <button class="sm" id="c-export-yaml">YAML 내보내기</button>
+        <button class="sm" id="c-export-csv">CSV 내보내기</button>
+      </div>
+    </div>
+    <div class="card" style="margin-bottom:14px">
+      <h3>업체 프로필</h3>
+      <div class="grid g3">
+        <label class="field"><span>업종</span><select id="b-industry">
+          <option>요식업</option><option>병의원</option><option>뷰티</option><option>전문서비스</option>
+        </select></label>
+        <label class="field"><span>상호</span><input id="b-brand" placeholder="성수 파스타랩"/></label>
+        <label class="field"><span>지역</span><input id="b-region" placeholder="성수동"/></label>
+        <label class="field"><span>핵심 키워드</span><input id="b-keyword" placeholder="성수동 파스타"/></label>
+        <label class="field"><span>상황 <small>요식업 키워드용</small></span><input id="b-situation" placeholder="데이트"/></label>
+        <label class="field"><span>증상 <small>병의원 키워드용</small></span><input id="b-symptom" placeholder="잇몸 출혈"/></label>
+        <label class="field"><span>강점</span><input id="b-strengths" placeholder="생면 파스타, 예약제 소규모 다이닝"/></label>
+        <label class="field"><span>타깃 고객</span><input id="b-target" placeholder="20~30대 데이트·모임 고객"/></label>
+        <label class="field"><span>대표 메뉴·시술 <small>쉼표로 구분</small></span><input id="b-menus" placeholder="트러플 파스타, 라구 파스타, 시즌 리조또"/></label>
+      </div>
+      <div class="grid g3" style="align-items:end">
+        <label class="field" style="margin:0"><span>시작일</span><input type="date" id="c-start"/></label>
+        <label class="field" style="margin:0"><span>기간(일)</span><input type="number" id="c-days" min="7" max="120" value="30"/></label>
+        <div><button class="primary" id="c-build" style="width:100%;justify-content:center">캘린더 생성</button></div>
+      </div>
+      <p class="hint">주간 리듬: 월·목·토 블로그 · 수 릴스 · 금 리뷰 답글. 재생성하면 완료 표시는 유지됩니다.</p>
+    </div>
+    <div id="c-view"></div>
+  </section>
+
+  <!-- ══ 검수 ══ -->
+  <section id="panel-review" class="panel hide">
+    <div class="panel-head">
+      <div>
+        <h2>콘텐츠 검수</h2>
+        <p><code>generate_content.py</code> 가 만든 <code>output/manifest.json</code> 을 불러와 승인·보류·반려로 관리합니다. 각 초안은 광고 규제 금지어(<code>compliance_check.py</code> 규칙)로 자동 스캔되며, ⛔ HIGH 항목은 승인 전 수정이 필요합니다.</p>
+      </div>
+      <div class="acts">
+        <button class="sm" id="r-open">manifest.json 열기</button>
+        <button class="sm" id="r-fetch">output/ 에서 불러오기</button>
+        <button class="sm primary" id="r-export">승인본 내보내기</button>
+      </div>
+    </div>
+    <div class="card" style="margin-bottom:14px">
+      <div class="grid g3">
+        <label class="field" style="margin:0"><span>상태 필터</span><select id="r-filter">
+          <option value="">전체</option><option>검수대기</option><option>승인</option><option>보류</option><option>반려</option>
+        </select></label>
+        <label class="field" style="margin:0"><span>규제 검출</span><select id="r-flag">
+          <option value="">전체</option><option value="high">⛔ HIGH 있는 항목만</option><option value="any">검출된 항목만</option><option value="clean">문제 없는 항목만</option>
+        </select></label>
+        <label class="field" style="margin:0"><span>검색</span><input id="r-q" placeholder="토픽·상호"/></label>
+      </div>
+      <p class="hint" id="r-summary">불러온 항목이 없습니다.</p>
+    </div>
+    <div id="r-list"></div>
+  </section>
+
+  <!-- ══ 리포트 ══ -->
+  <section id="panel-report" class="panel hide">
+    <div class="panel-head">
+      <div>
+        <h2>월간 성과 리포트</h2>
+        <p>채널별 지표를 입력하면 클라이언트에게 그대로 보낼 수 있는 마크다운 리포트를 만듭니다. 출력 형식은 <code>automation/report.py</code> 와 동일합니다.</p>
+      </div>
+      <div class="acts">
+        <button class="sm" id="m-import">지표 CSV 가져오기</button>
+        <button class="sm" id="m-add">지표 추가</button>
+        <button class="sm" id="m-copy">리포트 복사</button>
+        <button class="sm primary" id="m-download">리포트 내려받기</button>
+      </div>
+    </div>
+    <div class="card" style="margin-bottom:14px">
+      <div class="grid g3">
+        <label class="field" style="margin:0"><span>상호</span><input id="m-brand" placeholder="성수 파스타랩"/></label>
+        <label class="field" style="margin:0"><span>대상 월</span><input id="m-month" type="month"/></label>
+        <label class="field" style="margin:0"><span>담당 에디터</span><input id="m-editor" placeholder="담당 에디터"/></label>
+      </div>
+    </div>
+    <div id="m-table"></div>
+    <div class="card" style="margin-top:14px">
+      <h3>생성된 리포트</h3>
+      <div class="mdout" id="m-preview"></div>
+    </div>
+  </section>
+
+</main>
+
+<div id="toast" role="status" aria-live="polite"></div>
+<input type="file" id="filepick" class="hide"/>
+
+<script src="js/util.js"></script>
+<script src="js/store.js"></script>
+<script src="js/prospects.js"></script>
+<script src="js/calendar.js"></script>
+<script src="js/review.js"></script>
+<script src="js/report.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

@@ -2,6 +2,10 @@
 
 업종 전문 콘텐츠 대행 시스템을 실제로 가동하는 순서. 기호: 🙋 사람만 · 🤖 자동 · 💳 비용/결제.
 
+> **터미널 없이 하려면** `app/index.html`(운영 콘솔)을 여세요. 아래 STEP 1~4 의 타깃 점수화·
+> 캘린더 생성·검수·리포트를 브라우저 한 화면에서 처리하고, 결과물은 이 문서의 파이썬 명령에
+> 그대로 넣을 수 있는 형식으로 내보냅니다. 비용이 드는 `--live` 생성만 터미널에서 실행합니다.
+
 ---
 
 ## STEP 0 · 문 열기 (반나절, 대부분 완료됨)
@@ -26,6 +30,8 @@
    python score_prospects.py --csv 타겟리스트.example.csv
    # → output/타겟_우선순위.md (🔥 최우선부터 접촉)
    ```
+   또는 콘솔 **타깃·영업** 탭에서 CSV 를 가져오면 같은 점수로 정렬되고,
+   이후 접촉 단계(미접촉→콜드 접촉→상담→제안→계약)와 통화 메모까지 한 곳에서 관리됩니다.
 
 ## STEP 2 · 무기 준비 (🤖 무료 / 💳 실제본은 승인)
 
@@ -35,7 +41,8 @@
    python generate_content.py --calendar content_calendar.generated.yaml  # dry-run: 무료
    # 실제 콘텐츠(💳 토큰 비용, 승인 후): python generate_content.py --calendar ... --live
    ```
-5. 검수: `automation/review.html` 열어 승인/보류/반려 → 승인본 내보내기
+5. 검수: 콘솔 **검수** 탭(또는 `automation/review.html`)에서 승인/보류/반려 → 승인본 내보내기
+   - 콘솔은 각 초안을 규제 금지어로 자동 스캔해 ⛔ HIGH 위반을 승인 전에 잡아줍니다.
 6. 영업 자산: `ops/영업-아웃리치-키트.md` (스크립트) · `ops/제안서-견적서-템플릿.md` (클로징)
 
 ## STEP 3 · 영업 실행 (🙋 매일 10~20곳)
@@ -52,6 +59,7 @@
     build_calendar → generate_content → review(승인) → publish → [게시] → report
     ```
 12. 매월 `python report.py --brand "업체명" --month YYYY-MM` 로 성과 리포트 발송
+    (콘솔 **월간 리포트** 탭에 지표를 입력해도 같은 리포트가 나옵니다)
 
 ---
 

@@ -51,7 +51,7 @@ def main() -> int:
         print(f"지표 CSV 를 찾을 수 없습니다: {csv_path}", file=sys.stderr)
         return 1
 
-    rows = list(csv.DictReader(csv_path.open(encoding="utf-8")))
+    rows = list(csv.DictReader(csv_path.open(encoding="utf-8-sig")))
     if not rows:
         print("CSV 에 데이터가 없습니다.", file=sys.stderr)
         return 1
