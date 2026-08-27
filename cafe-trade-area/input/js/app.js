@@ -113,25 +113,32 @@
   }
 
   /* ── 폼 ─────────────────────────────── */
-  function control(site, k) {
+  /* id 와 aria-describedby 를 밖에서 받는다 — 라벨을 for 로 연결하기 위해서다. */
+  function control(site, k, id, help) {
     const m = FIELDS.meta(k);
     const v = site[k] ?? '';
     const bad = fieldError(site, k) ? ' bad' : '';
     if (m.종류 === 'flag') {
       const opts = [['Y', '해당'], ['N', '해당 없음'], ['', '미확인']];
-      return `<select class="${bad.trim()}" data-k="${k}">${opts.map(([val, lb]) =>
+      return `<select class="${bad.trim()}" id="${id}" name="${esc(k)}" data-k="${k}"
+        aria-describedby="${help}"${bad.trim() ? ' aria-invalid="true"' : ''}>${opts.map(([val, lb]) =>
         `<option value="${val}"${String(v) === val ? ' selected' : ''}>${lb}</option>`).join('')}</select>`;
     }
     if (m.종류 === 'select') {
-      return `<select class="${bad.trim()}" data-k="${k}">
+      return `<select class="${bad.trim()}" id="${id}" name="${esc(k)}" data-k="${k}"
+        aria-describedby="${help}"${bad.trim() ? ' aria-invalid="true"' : ''}>
         <option value="">— 선택 —</option>${(m.선택 || []).map(([val, lb]) =>
         `<option value="${val}"${String(v) === val ? ' selected' : ''}>${lb}</option>`).join('')}</select>`;
     }
     if (m.종류 === 'num') {
-      return `<input type="number" class="${bad.trim()}" data-k="${k}" value="${esc(v)}"
-        min="${m.최소 ?? ''}" max="${m.최대 ?? ''}" step="${m.증분 ?? 'any'}" inputmode="decimal"/>`;
+      return `<input type="number" class="${bad.trim()}" id="${id}" name="${esc(k)}" data-k="${k}"
+        value="${esc(v)}" min="${m.최소 ?? ''}" max="${m.최대 ?? ''}" step="${m.증분 ?? 'any'}"
+        inputmode="decimal" autocomplete="off"
+        aria-describedby="${help}"${bad.trim() ? ' aria-invalid="true"' : ''}/>`;
     }
-    return `<input type="text" class="${bad.trim()}" data-k="${k}" value="${esc(v)}"/>`;
+    return `<input type="text" class="${bad.trim()}" id="${id}" name="${esc(k)}" data-k="${k}"
+      value="${esc(v)}" autocomplete="off" spellcheck="false"
+      aria-describedby="${help}"${bad.trim() ? ' aria-invalid="true"' : ''}/>`;
   }
 
   function field(site, k) {
@@ -139,12 +146,18 @@
     const err = fieldError(site, k);
     const wide = (k === '비고' || k === '주소') ? ' wide' : '';
     const modCls = m.모듈 === '—' ? ' none' : '';
+    // for="" 는 어떤 컨트롤도 가리키지 않는다 — 라벨 클릭도, 접근성 이름도 없었다.
+    // 뱃지(필수·모듈)는 라벨 밖으로 빼서 이름이 라벨 글자만 남게 한다.
+    const id = 'f-' + k;
+    const help = `${id}-help`;
     return `<div class="f${wide}">
-      <label for="">${esc(m.라벨)}
+      <div class="f-h"><label for="${id}">${esc(m.라벨)}</label>
         ${m.필수 ? '<span class="req">필수</span>' : ''}
-        <span class="mod${modCls}">${esc(m.모듈)}</span></label>
-      ${control(site, k)}
-      ${err ? `<span class="err">${esc(err)}</span>` : `<span class="help">${esc(m.설명)}</span>`}
+        <span class="mod${modCls}">${esc(m.모듈)}</span></div>
+      ${control(site, k, id, help)}
+      ${err
+        ? `<span class="err" id="${help}" role="alert">${esc(err)}</span>`
+        : `<span class="help" id="${help}">${esc(m.설명)}</span>`}
     </div>`;
   }
 
@@ -165,8 +178,9 @@
       <p class="note">${g.설명}</p>
 
       <div class="searchrow">
-        <input type="search" id="q" placeholder="주소 또는 상호로 검색 — 예: 성동구 연무장길 42"
-          autocomplete="off" enterkeyhint="search"/>
+        <label class="vh" for="q">주소 또는 상호 검색</label>
+        <input type="search" id="q" name="주소검색" placeholder="예: 성동구 연무장길 42…"
+          autocomplete="off" spellcheck="false" enterkeyhint="search"/>
         <button class="primary" type="button" id="go">검색</button>
         <button type="button" id="post" title="키 없이 주소만 고릅니다">주소만 고르기</button>
       </div>
@@ -174,9 +188,10 @@
       ${PLACE.hasKey() ? '' : `<p class="keyhint">카카오 JS 키가 없어 <b>주소만</b> 고를 수 있습니다 —
         좌표는 지도에서 복사해 붙여넣으세요. <button type="button" class="sm ghost" id="keyopen">키 넣기</button></p>`}
       <div id="keybox" class="keybox hide">
-        <label>카카오맵 JS 키 <small>(도메인 제한으로 보호되므로 이 브라우저에만 저장됩니다)</small></label>
+        <label for="keyin">카카오맵 JS 키 <small>(도메인 제한으로 보호되므로 이 브라우저에만 저장됩니다)</small></label>
         <div class="searchrow">
-          <input type="text" id="keyin" value="${esc(PLACE.getKey())}" placeholder="JavaScript 키"/>
+          <input type="text" id="keyin" name="카카오키" value="${esc(PLACE.getKey())}"
+            autocomplete="off" spellcheck="false" placeholder="예: 3a1b…"/>
           <button class="primary" type="button" id="keysave">저장</button>
         </div>
       </div>
@@ -184,8 +199,9 @@
       <div class="picked ${주소 ? '' : 'empty'}">
         ${주소 ? `
           <div class="row"><span class="lb">주소</span><b>${esc(주소)}</b></div>
-          <div class="row"><span class="lb">후보지명</span>
-            <input type="text" data-k="후보지명" value="${esc(이름)}" placeholder="심의표에 쓸 이름"/>
+          <div class="row"><label class="lb" for="pl-name">후보지명</label>
+            <input type="text" id="pl-name" name="후보지명" data-k="후보지명" value="${esc(이름)}"
+              autocomplete="off" spellcheck="false" placeholder="예: 성수 연무장길…"/>
             ${이름 ? '' : '<button class="sm" type="button" id="namesug">주소에서 제안</button>'}</div>
           ${(String(site.우편번호 || '').trim() || String(site.법정동코드 || '').trim()) ? `
           <div class="row"><span class="lb">우편번호</span>
@@ -202,7 +218,9 @@
           </div>
           <div id="corbox" class="hide">
             <div class="searchrow">
-              <input type="text" id="corin" placeholder="37.5445, 127.0557"/>
+              <label class="vh" for="corin">위도, 경도</label>
+              <input type="text" id="corin" name="좌표" inputmode="decimal"
+                autocomplete="off" spellcheck="false" placeholder="예: 37.5445, 127.0557…"/>
               <button class="primary" type="button" id="corsave">적용</button>
             </div>
             <p class="note" style="margin:6px 0 0">네이버지도에서 해당 위치를 우클릭 →
@@ -327,13 +345,15 @@
         가정값은 실사로 반드시 대체해야 합니다 — 아래에 무엇을 어떤 근거로 채우는지 전부 적어 두었습니다.</p>
 
       <div class="grid">
-        <label class="fld"><span class="lb">마진율 (공헌이익률)<em>필수</em></span>
-          <input type="number" id="q-margin" value="${esc(마진율)}" min="1" max="99" step="1"
-            placeholder="55" inputmode="decimal"/>
-          <small>매출에서 변동비를 뺀 비율. 55 또는 0.55 둘 다 됩니다. 변동비율 v = 1 − 마진율</small></label>
-        <label class="fld"><span class="lb">월임대료 <small>(만원 · 선택)</small></span>
-          <input type="number" id="q-rent" value="${esc(임대료)}" min="0" step="1" placeholder="모르면 비워 두세요"/>
-          <small>알면 손익분기 매출이 한 줄로 나옵니다. 모르면 아래 구간표로 대신합니다.</small></label>
+        <div class="fld"><div class="f-h"><label class="lb" for="q-margin">마진율 (공헌이익률)</label><em>필수</em></div>
+          <input type="number" id="q-margin" name="마진율" value="${esc(마진율)}" min="1" max="99" step="1"
+            placeholder="예: 55…" inputmode="decimal" autocomplete="off" aria-describedby="q-margin-help"/>
+          <small id="q-margin-help">매출에서 변동비를 뺀 비율. 55 또는 0.55 둘 다 됩니다. 변동비율 v = 1 − 마진율</small></div>
+        <div class="fld"><div class="f-h"><label class="lb" for="q-rent">월임대료 <small>(만원 · 선택)</small></label></div>
+          <input type="number" id="q-rent" name="월임대료" value="${esc(임대료)}" min="0" step="1"
+            placeholder="예: 300… (모르면 비워 두세요)" inputmode="decimal" autocomplete="off"
+            aria-describedby="q-rent-help"/>
+          <small id="q-rent-help">알면 손익분기 매출이 한 줄로 나옵니다. 모르면 아래 구간표로 대신합니다.</small></div>
       </div>
       ${표}
 
