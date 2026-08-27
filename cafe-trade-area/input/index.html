@@ -31,9 +31,10 @@
     <code>sites.csv</code> 로 내보냅니다. <b>판정과 매출 추정은 이 페이지에서 하지 않습니다</b> —
     그건 분석 파이프라인의 일입니다.</p>
   <div class="steps">
-    <div class="step"><b>01 입력</b><span>후보지를 추가하고 실사 결과를 채웁니다</span></div>
-    <div class="step"><b>02 내보내기</b><span>sites.csv 를 내려받습니다</span></div>
-    <div class="step"><b>03 분석</b><span><code>review_sites.py --sites sites.csv</code></span></div>
+    <div class="step"><b>01 위치</b><span>주소를 검색해 후보지 위치를 확정합니다</span></div>
+    <div class="step"><b>02 실사</b><span>물건·계약·치명 항목을 채웁니다</span></div>
+    <div class="step"><b>03 내보내기</b><span>sites.csv 를 내려받습니다</span></div>
+    <div class="step"><b>04 분석</b><span><code>review_sites.py --sites sites.csv</code></span></div>
   </div>
 </div>
 
@@ -84,6 +85,7 @@ python3 review_sites.py --sites ~/Downloads/sites.csv
 <div id="toast" role="status" aria-live="polite"></div>
 
 <script src="js/fields.js"></script>
+<script src="js/place.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

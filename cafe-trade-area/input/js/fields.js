@@ -13,12 +13,14 @@ const FIELDS = (() => {
 
   const GROUPS = [
     {
-      key: '식별', 이름: '후보지 식별', 설명: '이름과 좌표가 있어야 등시선·격자·경쟁 계산이 시작됩니다.',
+      // 이 묶음은 일반 폼이 아니라 '위치' 블록에서 주소 검색으로 채운다(자동: true).
+      // 손으로 좌표를 찍게 하면 오타 한 자리에 상권이 통째로 어긋난다.
+      key: '식별', 이름: '후보지 위치', 설명: '주소를 검색하면 이름과 좌표가 함께 채워집니다.',
       항목: [
-        ['후보지명', '후보지명', 'text', 'M1~M5', '심의표와 결과 파일에서 이 후보지를 부르는 이름', { 필수: true }],
-        ['주소', '주소', 'text', '표시용', '심의 자료에 그대로 인쇄됩니다', {}],
-        ['위도', '위도', 'num', 'M1~M3', '등시선·격자 교차·경쟁 거리의 기준점', { 필수: true, 최소: 33, 최대: 39, 증분: 0.0001 }],
-        ['경도', '경도', 'num', 'M1~M3', '등시선·격자 교차·경쟁 거리의 기준점', { 필수: true, 최소: 124, 최대: 132, 증분: 0.0001 }],
+        ['후보지명', '후보지명', 'text', 'M1~M5', '심의표와 결과 파일에서 이 후보지를 부르는 이름', { 필수: true, 자동: true }],
+        ['주소', '주소', 'text', '표시용', '심의 자료에 그대로 인쇄됩니다', { 자동: true }],
+        ['위도', '위도', 'num', 'M1~M3', '등시선·격자 교차·경쟁 거리의 기준점', { 필수: true, 최소: 33, 최대: 39, 증분: 0.0001, 자동: true }],
+        ['경도', '경도', 'num', 'M1~M3', '등시선·격자 교차·경쟁 거리의 기준점', { 필수: true, 최소: 124, 최대: 132, 증분: 0.0001, 자동: true }],
       ],
     },
     {
@@ -87,8 +89,10 @@ const FIELDS = (() => {
   const meta = k => byKey[k] || null;
   const keys = () => Object.keys(byKey);
   const required = () => keys().filter(k => byKey[k].필수);
+  // 위치 블록이 채우는 항목 — 일반 폼 그리드에는 렌더하지 않는다
+  const auto = () => keys().filter(k => byKey[k].자동);
 
-  return { GROUPS, COLUMNS, FATAL, meta, keys, required };
+  return { GROUPS, COLUMNS, FATAL, meta, keys, required, auto };
 })();
 
 if (typeof module !== 'undefined' && module.exports) module.exports = FIELDS;

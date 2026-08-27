@@ -139,6 +139,143 @@
     </div>`;
   }
 
+  /* ── 위치 블록 ─────────────────────────────
+     주소 하나로 후보지명·좌표를 채운다. 좌표를 손으로 찍게 하면 오타 한 자리에
+     상권이 통째로 어긋나므로, 검색 결과에서 고르게 하고 직접 입력은 열지 않는다.
+     (좌표를 지도에서 복사해 온 경우만 붙여넣기로 받는다) */
+  function placeBlock(site, g) {
+    const 주소 = String(site.주소 || '').trim();
+    const 위도 = String(site.위도 || '').trim();
+    const 경도 = String(site.경도 || '').trim();
+    const 이름 = String(site.후보지명 || '').trim();
+    const 좌표있음 = !!(위도 && 경도);
+    const ls = PLACE.links(site);
+
+    return `<fieldset class="place">
+      <legend>${esc(g.이름)}</legend>
+      <p class="note">${g.설명}</p>
+
+      <div class="searchrow">
+        <input type="search" id="q" placeholder="주소 또는 상호로 검색 — 예: 성동구 연무장길 42"
+          autocomplete="off" enterkeyhint="search"/>
+        <button class="primary" type="button" id="go">검색</button>
+        <button type="button" id="post" title="키 없이 주소만 고릅니다">주소만 고르기</button>
+      </div>
+      <div id="hits" class="hits hide"></div>
+      ${PLACE.hasKey() ? '' : `<p class="keyhint">카카오 JS 키가 없어 <b>주소만</b> 고를 수 있습니다 —
+        좌표는 지도에서 복사해 붙여넣으세요. <button type="button" class="sm ghost" id="keyopen">키 넣기</button></p>`}
+      <div id="keybox" class="keybox hide">
+        <label>카카오맵 JS 키 <small>(도메인 제한으로 보호되므로 이 브라우저에만 저장됩니다)</small></label>
+        <div class="searchrow">
+          <input type="text" id="keyin" value="${esc(PLACE.getKey())}" placeholder="JavaScript 키"/>
+          <button class="primary" type="button" id="keysave">저장</button>
+        </div>
+      </div>
+
+      <div class="picked ${주소 ? '' : 'empty'}">
+        ${주소 ? `
+          <div class="row"><span class="lb">주소</span><b>${esc(주소)}</b></div>
+          <div class="row"><span class="lb">후보지명</span>
+            <input type="text" data-k="후보지명" value="${esc(이름)}" placeholder="심의표에 쓸 이름"/>
+            ${이름 ? '' : '<button class="sm" type="button" id="namesug">주소에서 제안</button>'}</div>
+          <div class="row"><span class="lb">좌표</span>
+            ${좌표있음
+              ? `<b class="mono">${esc(위도)}, ${esc(경도)}</b>
+                 <button class="sm ghost" type="button" id="coredit">고치기</button>`
+              : `<span class="miss">없음 — 지도에서 복사해 붙여넣으세요</span>
+                 <button class="sm" type="button" id="coredit">좌표 붙여넣기</button>`}
+          </div>
+          <div id="corbox" class="hide">
+            <div class="searchrow">
+              <input type="text" id="corin" placeholder="37.5445, 127.0557"/>
+              <button class="primary" type="button" id="corsave">적용</button>
+            </div>
+            <p class="note" style="margin:6px 0 0">네이버지도에서 해당 위치를 우클릭 →
+              좌표를 복사해 그대로 붙여넣으면 됩니다.</p>
+          </div>
+        ` : '<div class="miss">위에서 주소를 검색해 위치를 확정하세요.</div>'}
+      </div>
+
+      ${ls.length ? `<div class="svc">
+        <div class="svc-h">이 위치 확인</div>
+        <div class="svc-b">${ls.map(l => `<a href="${esc(l.href)}" target="_blank" rel="noopener noreferrer">
+          <span class="nm">${esc(l.이름)}</span><span class="ds">${esc(l.설명)}</span></a>`).join('')}</div>
+        <p class="note" style="margin:9px 0 0">각 사이트를 새 탭에서 엽니다 —
+          데이터를 자동으로 가져오지는 않습니다(공개 API 가 없습니다).</p>
+      </div>` : ''}
+    </fieldset>`;
+  }
+
+  function wirePlace(site) {
+    const el = $('#pane');
+    const b = (id, fn) => { const x = el.querySelector(id); if (x) x.onclick = fn; };
+    const q = el.querySelector('#q');
+
+    function apply(hit) {
+      const s2 = sites[cur];
+      s2.주소 = hit.주소 || '';
+      if (!String(s2.후보지명 || '').trim()) s2.후보지명 = PLACE.suggestName(hit);
+      if (Number.isFinite(hit.위도) && Number.isFinite(hit.경도)) {
+        s2.위도 = String(hit.위도); s2.경도 = String(hit.경도);
+      }
+      save(); render();
+      toast(hit.위도 ? '위치를 확정했습니다' : '주소를 넣었습니다 — 좌표는 붙여넣어 주세요');
+    }
+
+    function runSearch() {
+      const text = (q && q.value || '').trim();
+      if (!text) { toast('주소나 상호를 입력하세요.'); return; }
+      if (!PLACE.hasKey()) { toast('카카오 JS 키가 없습니다 — 주소만 고르기를 쓰세요.'); return; }
+      const box = el.querySelector('#hits');
+      box.classList.remove('hide');
+      box.innerHTML = '<div class="hit-empty">찾는 중…</div>';
+      PLACE.search(text).then(hits => {
+        if (!hits.length) { box.innerHTML = '<div class="hit-empty">결과가 없습니다.</div>'; return; }
+        box.innerHTML = hits.map((h, i) => `<button type="button" data-hit="${i}">
+          <span class="nm">${esc(h.이름 || h.주소)}</span>
+          <span class="ad">${esc(h.주소)}</span>
+          <span class="src">${esc(h.출처)}</span></button>`).join('');
+        box.querySelectorAll('[data-hit]').forEach(btn => {
+          btn.onclick = () => apply(hits[Number(btn.dataset.hit)]);
+        });
+      }).catch(e => {
+        box.innerHTML = `<div class="hit-empty">검색 실패 — ${esc(e.message)}</div>`;
+      });
+    }
+
+    if (q) q.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); runSearch(); } };
+    b('#go', runSearch);
+    b('#post', () => PLACE.openPostcode().then(apply).catch(e => {
+      if (e.message !== '취소') toast(e.message);
+    }));
+    b('#keyopen', () => el.querySelector('#keybox').classList.remove('hide'));
+    b('#keysave', () => {
+      PLACE.setKey(el.querySelector('#keyin').value);
+      toast(PLACE.hasKey() ? '키를 저장했습니다 — 이제 검색하면 좌표까지 채워집니다' : '키를 지웠습니다');
+      render();
+    });
+    b('#namesug', () => {
+      const s2 = sites[cur];
+      s2.후보지명 = PLACE.suggestName({ 이름: '', 주소: s2.주소 });
+      save(); render();
+      toast('주소에서 이름을 지었습니다 — 필요하면 고치세요');
+    });
+    b('#coredit', () => {
+      const box = el.querySelector('#corbox');
+      box.classList.toggle('hide');
+      const inp = el.querySelector('#corin');
+      if (inp && !box.classList.contains('hide')) inp.focus();
+    });
+    b('#corsave', () => {
+      const v = PLACE.parseCoords(el.querySelector('#corin').value);
+      if (!v) { toast('좌표를 읽지 못했습니다 — 예: 37.5445, 127.0557'); return; }
+      sites[cur].위도 = String(v.위도);
+      sites[cur].경도 = String(v.경도);
+      save(); render();
+      toast('좌표를 넣었습니다');
+    });
+  }
+
   function renderForm() {
     const site = sites[cur];
     const nm = String(site.후보지명 || '').trim() || '(이름 없음)';
@@ -151,11 +288,16 @@
           <button class="sm ghost danger" type="button" id="del">삭제</button>
         </div>
       </div>
-      ${FIELDS.GROUPS.map(g => `<fieldset>
-        <legend>${esc(g.이름)}</legend>
-        ${g.설명 ? `<p class="note">${g.설명}</p>` : ''}
-        <div class="grid">${g.항목.map(([k]) => field(site, k)).join('')}</div>
-      </fieldset>`).join('')}`;
+      ${FIELDS.GROUPS.map(g => {
+        const manual = g.항목.map(([k]) => k).filter(k => !FIELDS.meta(k).자동);
+        // 위치 묶음은 주소 검색 블록이 대신한다
+        if (!manual.length) return placeBlock(site, g);
+        return `<fieldset>
+          <legend>${esc(g.이름)}</legend>
+          ${g.설명 ? `<p class="note">${g.설명}</p>` : ''}
+          <div class="grid">${manual.map(k => field(site, k)).join('')}</div>
+        </fieldset>`;
+      }).join('')}`;
 
     $$('#pane [data-k]').forEach(el => {
       el.onchange = () => {
@@ -164,6 +306,7 @@
         render();
       };
     });
+    wirePlace(site);
     $('#dup').onclick = () => {
       const copy = Object.assign({}, sites[cur]);
       copy.후보지명 = (copy.후보지명 || '후보지') + ' 사본';
