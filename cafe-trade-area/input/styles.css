@@ -197,3 +197,7 @@ fieldset.place .note{margin-bottom:12px}
 .svc-b a:hover{background:var(--sig-soft);border-color:var(--sig);text-decoration:none}
 .svc-b .nm{font-size:13px;font-weight:600;color:var(--fg)}
 .svc-b .ds{font-size:11.5px;color:var(--mute)}
+.picked .lawd{font-size:11.5px;color:var(--mute)}
+.picked .lawd b{font-size:11.5px;color:var(--soft)}
+.picked .lawd{font-size:11.5px;color:var(--mute)}
+.picked .lawd b{font-size:11.5px;color:var(--soft)}

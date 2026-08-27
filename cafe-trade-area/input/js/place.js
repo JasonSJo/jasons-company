@@ -69,13 +69,18 @@ const PLACE = (() => {
           이름: (r.road_address && r.road_address.building_name) || '',
           주소: (r.road_address && r.road_address.address_name) || r.address_name || '',
           지번: (r.address && r.address.address_name) || '',
+          우편번호: (r.road_address && r.road_address.zone_no) || '',
+          법정동코드: (r.address && r.address.b_code) || '',
           위도: Number(r.y), 경도: Number(r.x), 출처: '주소',
         }));
         places.keywordSearch(q, (plRes, plStatus) => {
+          // 장소 검색은 우편번호·법정동코드를 주지 않는다. 빈 값으로 두고,
+          // 필요하면 '주소만 고르기'(우편번호 서비스)로 채운다.
           const fromPlace = (plStatus === OK ? plRes : []).map(r => ({
             이름: r.place_name || '',
             주소: r.road_address_name || r.address_name || '',
             지번: r.address_name || '',
+            우편번호: '', 법정동코드: '',
             위도: Number(r.y), 경도: Number(r.x), 출처: '장소',
           }));
           // 주소 결과를 먼저 — 후보지는 '그 자리'가 기준이지 상호가 기준이 아니다
@@ -110,10 +115,14 @@ const PLACE = (() => {
             이름: data.buildingName || '',
             주소: data.roadAddress || data.address || '',
             지번: data.jibunAddress || '',
+            // zonecode = 5자리 신우편번호, bcode = 10자리 법정동코드.
+            // 법정동코드 앞 5자리가 국토교통부 실거래가 API 의 지역코드(LAWD_CD)다.
+            우편번호: data.zonecode || '',
+            법정동코드: data.bcode || '',
             위도: null, 경도: null, 출처: '우편번호',
           });
         },
-        onclose: state => { if (!done) reject(new Error('취소')); },
+        onclose: () => { if (!done) reject(new Error('취소')); },
       }).open();
     }));
   }
@@ -131,6 +140,14 @@ const PLACE = (() => {
     if (isLat(a) && isLon(b)) return { 위도: a, 경도: b };
     if (isLon(a) && isLat(b)) return { 위도: b, 경도: a };
     return null;
+  }
+
+  /* ── 실거래가 지역코드 ─────────────────────────────── */
+  /* 국토교통부 실거래가 API 는 법정동코드 앞 5자리(시군구 코드)를 지역코드로 받는다.
+     10자리 전체를 넣으면 조회되지 않으므로 여기서 잘라 둔다. */
+  function lawdCode(bcode) {
+    const b = String(bcode || '').replace(/\D/g, '');
+    return b.length >= 5 ? b.slice(0, 5) : '';
   }
 
   /* ── 후보지명 제안 ─────────────────────────────── */
@@ -167,7 +184,8 @@ const PLACE = (() => {
     return SERVICES.map(s => ({ id: s.id, 이름: s.이름, 설명: s.설명, href: s.url(q) }));
   }
 
-  return { getKey, setKey, hasKey, search, openPostcode, parseCoords, suggestName, links, SERVICES };
+  return { getKey, setKey, hasKey, search, openPostcode, parseCoords,
+           suggestName, lawdCode, links, SERVICES };
 })();
 
 if (typeof module !== 'undefined' && module.exports) module.exports = PLACE;

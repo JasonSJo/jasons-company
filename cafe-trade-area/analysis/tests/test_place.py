@@ -78,6 +78,16 @@ class TestPlace(unittest.TestCase):
                 if l["이름"] != "일사편리":
                     self.assertIn(enc, l["href"].replace("%20", "%20"))
 
+    def test_법정동코드에서_실거래가_지역코드를_뽑는다(self):
+        """국토교통부 실거래가 API 는 법정동코드 앞 5자리를 지역코드(LAWD_CD)로 받는다.
+        10자리를 그대로 넣으면 조회되지 않는다."""
+        got = {x["입력"]: x["결과"] for x in self.d["lawd"]}
+        self.assertEqual(got["1114010300"], "11140")
+        self.assertEqual(got["11140"], "11140")
+        for bad in ("", "abc", "111"):
+            with self.subTest(입력=bad):
+                self.assertEqual(got[bad], "")
+
     def test_주소가_없으면_링크를_만들지_않는다(self):
         """빈 주소로 검색 URL 을 열면 엉뚱한 페이지로 보낸다."""
         self.assertEqual(self.d["링크_주소없음"], [])

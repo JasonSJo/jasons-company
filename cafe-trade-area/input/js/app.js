@@ -178,6 +178,12 @@
           <div class="row"><span class="lb">후보지명</span>
             <input type="text" data-k="후보지명" value="${esc(이름)}" placeholder="심의표에 쓸 이름"/>
             ${이름 ? '' : '<button class="sm" type="button" id="namesug">주소에서 제안</button>'}</div>
+          ${(String(site.우편번호 || '').trim() || String(site.법정동코드 || '').trim()) ? `
+          <div class="row"><span class="lb">우편번호</span>
+            <b class="mono">${esc(String(site.우편번호 || '').trim() || '—')}</b>
+            ${String(site.법정동코드 || '').trim() ? `<span class="lawd">법정동 ${esc(site.법정동코드)}
+              · 실거래가 지역코드 <b class="mono">${esc(PLACE.lawdCode(site.법정동코드))}</b></span>` : ''}
+          </div>` : ''}
           <div class="row"><span class="lb">좌표</span>
             ${좌표있음
               ? `<b class="mono">${esc(위도)}, ${esc(경도)}</b>
@@ -214,6 +220,9 @@
     function apply(hit) {
       const s2 = sites[cur];
       s2.주소 = hit.주소 || '';
+      // 장소 검색은 이 둘을 주지 않는다 — 이미 있는 값을 빈 값으로 덮지 않는다
+      if (hit.우편번호) s2.우편번호 = hit.우편번호;
+      if (hit.법정동코드) s2.법정동코드 = hit.법정동코드;
       if (!String(s2.후보지명 || '').trim()) s2.후보지명 = PLACE.suggestName(hit);
       if (Number.isFinite(hit.위도) && Number.isFinite(hit.경도)) {
         s2.위도 = String(hit.위도); s2.경도 = String(hit.경도);

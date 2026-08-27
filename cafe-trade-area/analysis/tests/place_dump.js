@@ -14,8 +14,10 @@ const names = [
   { 이름: '', 주소: '서울 성동구' },
 ].map(h => ({ 입력: h, 결과: PLACE.suggestName(h) }));
 
+const lawd = ['1114010300', '11140', '', 'abc', '111'].map(b => ({ 입력: b, 결과: PLACE.lawdCode(b) }));
+
 process.stdout.write(JSON.stringify({
-  coords, names,
+  coords, names, lawd,
   서비스: PLACE.SERVICES.map(s => s.이름),
   링크: PLACE.links({ 주소: '서울 성동구 연무장길 42' }),
   링크_주소없음: PLACE.links({ 주소: '' }),
