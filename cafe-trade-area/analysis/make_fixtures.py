@@ -173,15 +173,19 @@ def build_points(all_locs):
             plat, plon = offset(lat, lon, dx, dy)
             side = "A" if idx % 2 == 0 else "B"
             am = round(1600 * scale * r.uniform(0.6, 1.4))
-            rows.append({"지점ID": f"{name}-{idx}", "위도": round(plat, 6), "경도": round(plon, 6),
+            rows.append({"출처": "실측", "단위면적_m2": "",
+                         "지점ID": f"{name}-{idx}", "위도": round(plat, 6), "경도": round(plon, 6),
                          "도로변": side, "시간대": "오전", "인원": am})
-            rows.append({"지점ID": f"{name}-{idx}", "위도": round(plat, 6), "경도": round(plon, 6),
+            rows.append({"출처": "실측", "단위면적_m2": "",
+                         "지점ID": f"{name}-{idx}", "위도": round(plat, 6), "경도": round(plon, 6),
                          "도로변": side, "시간대": "전체", "인원": round(am * r.uniform(4.5, 6.5))})
             if idx == 0:
-                rows.append({"지점ID": f"{name}-{idx}", "위도": round(plat, 6), "경도": round(plon, 6),
+                rows.append({"출처": "실측", "단위면적_m2": "",
+                         "지점ID": f"{name}-{idx}", "위도": round(plat, 6), "경도": round(plon, 6),
                              "도로변": side, "시간대": "주말",
                              "인원": round(am * r.uniform(0.8, 2.6))})
-                rows.append({"지점ID": f"{name}-{idx}", "위도": round(plat, 6), "경도": round(plon, 6),
+                rows.append({"출처": "실측", "단위면적_m2": "",
+                         "지점ID": f"{name}-{idx}", "위도": round(plat, 6), "경도": round(plon, 6),
                              "도로변": side, "시간대": "야간",
                              "인원": round(am * r.uniform(0.3, 1.5))})
     return rows
@@ -315,7 +319,7 @@ def main():
     write_csv(ROOT / "격자인구.example.csv", cells,
               ["격자ID", "중심위도", "중심경도", "한변_m", "세대수", "직장인구"])
     write_csv(ROOT / "유동인구.example.csv", points,
-              ["지점ID", "위도", "경도", "도로변", "시간대", "인원"])
+              ["지점ID", "위도", "경도", "도로변", "시간대", "인원", "출처", "단위면적_m2"])
     write_csv(ROOT / "경쟁점.example.csv", comps,
               ["상호", "브랜드", "티어", "위도", "경도", "좌석수", "자사"])
 

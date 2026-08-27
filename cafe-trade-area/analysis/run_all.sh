@@ -46,6 +46,16 @@ echo -e "\n[2/5] M3 경쟁점"
 "$PY" collect_competitors.py --sites "$SITES" --stores "$STORES" $LIVE
 
 echo
+echo "── 유동인구 대용 (서울 상권분석 · 실측 아님) ──"
+"$PY" collect_foot_traffic.py --sites "$SITES" $LIVE || \
+  echo "  ! 유동인구 대용 수집을 건너뜁니다 — 심의는 계속 진행됩니다."
+
+echo
+echo "── 브랜드 매출 벤치마크 (공정위 공시 · 연 1회면 충분) ──"
+"$PY" collect_benchmarks.py $LIVE || \
+  echo "  ! 벤치마크 수집을 건너뜁니다 — 심의는 계속 진행됩니다."
+
+echo
 echo "── 실거래가 (M5 시세 대조 근거 · 매출 추정에는 미사용) ──"
 "$PY" collect_transactions.py --sites "$SITES" $LIVE || \
   echo "  ! 실거래가 수집을 건너뜁니다 — 심의는 계속 진행됩니다."
