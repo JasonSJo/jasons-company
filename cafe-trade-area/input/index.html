@@ -36,6 +36,10 @@
     <div class="step"><b>03 내보내기</b><span>sites.csv 를 내려받습니다</span></div>
     <div class="step"><b>04 분석</b><span><code>review_sites.py --sites sites.csv</code></span></div>
   </div>
+  <p class="quicknote"><b>실사 전이라면 간편 입력을 쓰십시오.</b> 주소와 마진율만 넣으면
+    나머지 칸을 가정값으로 채워 후보지를 미리 걸러낼 수 있습니다. 다만 가정값으로 나온
+    판정은 <b>후보지를 추리는 용도</b>이며, 출점 결정의 근거가 되지 않습니다 —
+    유동인구 실측과 기존점 실적은 어디서도 받아올 수 없기 때문입니다.</p>
 </div>
 
 <div class="wrap cols">
@@ -86,6 +90,7 @@ python3 review_sites.py --sites ~/Downloads/sites.csv
 
 <script src="js/fields.js"></script>
 <script src="js/place.js"></script>
+<script src="js/quick.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>
