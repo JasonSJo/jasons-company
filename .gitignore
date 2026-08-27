@@ -9,3 +9,8 @@ _site/
 #   cafe-trade-area/analysis/.gitignore   output/ · __pycache__/ · *.pyc
 #   content-agency/automation/.gitignore  output/ · __pycache__/ · …
 # 여기에 다시 적으면 규칙이 두 곳에 생겨 한쪽만 고쳐지는 일이 생긴다.
+
+# 출점심의 로컬 DB — 조직 데이터가 들어간다. 절대 커밋하지 않는다.
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
