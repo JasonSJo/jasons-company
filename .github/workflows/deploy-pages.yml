@@ -37,6 +37,7 @@ jobs:
         #   /content-agency/      콘텐츠 대행 랜딩 + 운영 콘솔 + 문서
         #   /cafe-trade-area/     상권분석 소개 + 문서
         #   /cafe-trade-area/input/   후보지 데이터 입력 (공개 — 입력만 다룬다)
+        #   /cafe-trade-area/consult/ 고객 상담 (공개 — 서버 없음, 개인정보는 브라우저 밖으로 안 나간다)
         #   /cafe-trade-area/app/     안내 페이지만. 심의 콘솔은 배포하지 않는다.
         #
         # 심의 콘솔(cafe-trade-area/app/)은 '사내 한정 · 대외 배포 금지' 자료라 배포에서 뺀다.
@@ -50,6 +51,7 @@ jobs:
           cp index.html _site/index.html
           cp -r content-agency/. _site/content-agency/
           cp -r cafe-trade-area/input _site/cafe-trade-area/input
+          cp -r cafe-trade-area/consult _site/cafe-trade-area/consult
           cp cafe-trade-area/index.html cafe-trade-area/README.md cafe-trade-area/QUICKSTART.md _site/cafe-trade-area/
           cp .github/pages/심의콘솔-안내.html _site/cafe-trade-area/app/index.html
           # 심의 콘솔 자산이 섞여 들어갔는지 확인 — 섞이면 배포를 중단한다
@@ -59,6 +61,11 @@ jobs:
           # 메인 안내가 빠지면 사이트에 현관이 없어진다
           test -s _site/index.html || { echo "회사 메인(index.html)이 없습니다"; exit 1; }
           test -s _site/cafe-trade-area/input/index.html || { echo "데이터 입력 페이지가 없습니다"; exit 1; }
+          test -s _site/cafe-trade-area/consult/index.html || { echo "상담 페이지가 없습니다"; exit 1; }
+          # 상담 페이지는 개인정보를 다룬다 — 어떤 형태로든 외부 전송 코드가 섞이면 배포를 중단한다
+          if grep -rqE 'fetch\(|XMLHttpRequest|sendBeacon|WebSocket' _site/cafe-trade-area/consult/; then
+            echo "상담 페이지에 외부 전송 코드가 있습니다"; exit 1
+          fi
       - name: Upload site
         uses: actions/upload-pages-artifact@v3
         with:
