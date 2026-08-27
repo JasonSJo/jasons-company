@@ -17,7 +17,8 @@ import sys
 from pathlib import Path
 
 import pipeline
-from common import nf, write_json, write_text
+from collect_transactions import lawd, summarize
+from common import nf, read_csv, write_json, write_text
 from config import FATAL_FLAGS, MODE_B_WEIGHTS, c, overridden, unvalidated
 
 ROOT = Path(__file__).resolve().parent
@@ -33,7 +34,56 @@ def header(settings: dict) -> list[str]:
     ]
 
 
-def render(res: dict) -> str:
+def market(sites: list[dict], path: Path) -> list[str]:
+    """지역 실거래가 요약. collect_transactions.py 가 만든 표가 있을 때만 싣는다.
+
+    판정 계산에는 들어가지 않는다 — 매매가는 임대 조건이 아니고 상업용은 편차가 크다.
+    제시된 보증금·권리금·임대료가 그 지역 수준을 벗어나는지 대조하는 용도다.
+    """
+    if not path.exists():
+        return []
+    rows = [r for r in read_csv(path) if (r.get("지역코드") or "").strip()]
+    if not rows:
+        return []
+
+    regions = {}
+    for r in sites:
+        code = lawd(r["후보지"].get("법정동코드"))
+        if code:
+            regions.setdefault(code, []).append(r["이름"])
+    if not regions:
+        return []
+
+    def f(v):
+        try:
+            return float(str(v).replace(",", ""))
+        except (TypeError, ValueError):
+            return 0.0
+
+    L = ["---", "", "## 지역 실거래가 (참고)", "",
+         "국토교통부 상업업무용 부동산 매매 신고 자료. **판정 계산에는 들어가지 않습니다** — "
+         "매매가는 임대 조건이 아니고 상업용은 층·용도·전면에 따라 편차가 큽니다. "
+         "제시된 임대 조건이 지역 수준을 벗어나는지 대조하는 용도로만 보십시오.", "",
+         "| 지역코드 | 후보지 | 건수 | 중앙 만원/㎡ | 중앙 거래금액(만원) | 최근 거래 |",
+         "|---|---|---:|---:|---:|---|"]
+    for code, names in regions.items():
+        hit = [{"만원_per_m2": f(r.get("만원_per_m2")),
+                "거래금액_만원": f(r.get("거래금액_만원")),
+                "거래일": r.get("거래일", "")}
+               for r in rows if (r.get("지역코드") or "").strip() == code]
+        hit = [h for h in hit if h["거래금액_만원"]]
+        if not hit:
+            L.append(f"| {code} | {'·'.join(names)} | 0 | — | — | — |")
+            continue
+        s2 = summarize(hit)
+        u = f"{s2['만원_per_m2_중앙']:,.1f}" if s2["만원_per_m2_중앙"] else "—"
+        a = f"{s2['거래금액_만원_중앙']:,.0f}" if s2["거래금액_만원_중앙"] else "—"
+        L.append(f"| {code} | {'·'.join(names)} | {s2['건수']} | {u} | {a} | "
+                 f"{s2['최근_거래일'] or '—'} |")
+    return L + [""]
+
+
+def render(res: dict, market_csv: Path = None) -> str:
     settings = res["설정"]
     cands = sorted(res["후보지"], key=lambda r: (
         {"통과": 0, "보류": 1, "부결": 2}[r["판정"]["판정"]], -(r["판정"]["margin"] or -9)))
@@ -98,6 +148,9 @@ def render(res: dict) -> str:
         if r["경고"]:
             L += ["**데이터 경고**"] + [f"- {x}" for x in r["경고"]] + [""]
 
+    if market_csv:
+        L += market(cands, market_csv)
+
     ovr = overridden()
     if ovr:
         L += ["---", "", "## 콘솔에서 입력한 계수", "",
@@ -122,6 +175,8 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="점포개발 심의표 생성 (M1~M5)")
     pipeline.add_common_args(ap, ROOT)
     ap.add_argument("--out", default=str(ROOT / "output" / "심의표.md"))
+    ap.add_argument("--실거래", dest="실거래", default=str(ROOT / "output" / "실거래가.csv"),
+                    help="collect_transactions.py 산출물 (없으면 그 절을 싣지 않는다)")
     ap.add_argument("--json", default=str(ROOT / "output" / "심의결과.json"))
     args = ap.parse_args()
 
@@ -131,7 +186,7 @@ def main() -> int:
         return 1
     res = pipeline.analyze_all(data["sites"], data["stores"], data["isos"], data["cells"],
                                data["points"], data["competitors"], data["settings"])
-    write_text(Path(args.out), render(res))
+    write_text(Path(args.out), render(res, Path(args.실거래)))
     write_json(Path(args.json), export(res))
 
     print(f"후보지 {len(res['후보지'])}곳 심의 → {args.out}   (모드 {res['모드']})")

@@ -45,6 +45,11 @@ echo -e "\n[1/5] M1 등시선"
 echo -e "\n[2/5] M3 경쟁점"
 "$PY" collect_competitors.py --sites "$SITES" --stores "$STORES" $LIVE
 
+echo
+echo "── 실거래가 (심의 참고 · 판정 계산에는 들어가지 않음) ──"
+"$PY" collect_transactions.py --sites "$SITES" $LIVE || \
+  echo "  ! 실거래가 수집을 건너뜁니다 — 심의는 계속 진행됩니다."
+
 echo -e "\n[3/5] M1~M5 심의표"
 "$PY" review_sites.py "${COMMON[@]}"
 
