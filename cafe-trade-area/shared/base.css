@@ -29,6 +29,17 @@ body{
 a{color:var(--sig);text-decoration:none}
 a:hover{text-decoration:underline}
 :focus-visible{outline:2px solid var(--sig);outline-offset:2px}
+/* 더블탭 확대 지연 제거 + 탭 하이라이트를 의도한 색으로. 둘 다 모바일에서만 보인다. */
+button,a,label,summary,[role=group] button{touch-action:manipulation}
+button,a{-webkit-tap-highlight-color:rgba(154,59,27,.18)}
+
+/* 본문 바로가기 — 키보드로 들어온 사람이 머리말 링크를 전부 지나치지 않아도 되게. */
+.skip{position:absolute;left:-9999px;top:0;z-index:99;
+  padding:10px 16px;background:var(--sig);color:#fff;font-weight:600;font-size:14px}
+.skip:focus{left:8px;top:8px;text-decoration:none}
+/* 화면에서만 숨긴다 — display:none 이면 스크린리더도 못 읽는다. */
+.vh{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;
+  clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0}
 h1,h2,h3{margin:0;font-family:'Hahmlet','Nanum Myeongjo',serif;letter-spacing:-.02em}
 .wrap{max-width:var(--maxw);margin:0 auto;padding:0 22px}
 .hide{display:none !important}
@@ -119,8 +130,8 @@ fieldset .note{margin:7px 0 16px;font-size:12.5px;color:var(--mute);max-width:76
 @media(max-width:620px){.grid{grid-template-columns:1fr}}
 .f{display:flex;flex-direction:column;gap:5px}
 .f.wide{grid-column:1/-1}
-.f label{font-size:12.5px;font-weight:500;color:var(--soft);display:flex;
-  align-items:baseline;gap:7px;flex-wrap:wrap}
+.f-h{display:flex;align-items:baseline;gap:7px;flex-wrap:wrap}
+.f label,.fld .lb{font-size:12.5px;font-weight:500;color:var(--soft)}
 .f .mod{font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.1em;
   color:var(--mute);border:1px solid var(--border);padding:0 5px;white-space:nowrap}
 .f .mod.none{color:var(--mute);opacity:.7}
@@ -143,7 +154,7 @@ fieldset .note{margin:7px 0 16px;font-size:12.5px;color:var(--mute);max-width:76
 
 /* ── 다음 단계 ─────────────────────────────── */
 .next{border:1px solid var(--border);background:var(--card);padding:18px 20px;margin-top:18px}
-.next h3{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.2em;
+.next h2,.next h3{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.2em;
   text-transform:uppercase;color:var(--mute);font-weight:500;margin-bottom:10px}
 .next p{margin:0 0 10px;font-size:13.5px;color:var(--soft)}
 pre{margin:0;padding:12px 14px;background:var(--bg);border:1px solid var(--border);
@@ -261,4 +272,14 @@ table.assume-t tr.kept .w{font-style:italic}
 @media(max-width:720px){
   .modes{flex-direction:column}
   table.assume-t .k{width:34%}
+}
+
+
+/* 움직임을 줄여 달라고 설정한 사람에게는 전환을 끈다.
+   여기 전환은 .15~.18s 로 짧지만, 짧다고 예외로 두면 규칙이 규칙이 아니게 된다. */
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{
+    animation-duration:.01ms !important; animation-iteration-count:1 !important;
+    transition-duration:.01ms !important; scroll-behavior:auto !important;
+  }
 }

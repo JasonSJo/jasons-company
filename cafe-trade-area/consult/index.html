@@ -16,6 +16,8 @@
 </head>
 <body>
 
+<a class="skip" href="#main">본문 바로가기</a>
+
 <header class="top">
   <div class="wrap top-in">
     <a class="brand" href="../"><span class="mk">◎</span>상권분석<small>고객 상담</small></a>
@@ -27,6 +29,7 @@
   </div>
 </header>
 
+<main id="main">
 <div class="wrap intro">
   <h1>창업 희망 조건을 받습니다</h1>
   <p>여기서 받은 조건이 두 곳으로 갑니다 — <b>후보지를 거르는 필터</b>와
@@ -51,7 +54,7 @@
   <div class="ready-box" id="ready"></div>
 
   <section class="next">
-    <h3>내보낸 다음</h3>
+    <h2>내보낸 다음</h2>
     <p>내려받은 <code>consult.json</code> 을 <code>analysis/</code> 에 두고 돌립니다.
       후보지를 거르고, 운영·투자 형태를 설정에 얹은 뒤 심의로 넘깁니다.</p>
     <pre>cd cafe-trade-area/analysis
@@ -67,12 +70,14 @@ python3 review_sites.py --sites output/consult/sites.csv \
   </section>
 
   <section class="next">
-    <h3>이 페이지가 다루지 않는 것</h3>
+    <h2>이 페이지가 다루지 않는 것</h2>
     <p>판정도 매출 추정도 하지 않습니다. 손익분기 미리보기는 <b>임대료를 가정한 값</b>이고,
       고정인건비·기타는 설정 파일이 아니라 화면용 폴백입니다. 실제 판정은 후보지를 넣고
       파이프라인을 돌려야 나옵니다.</p>
   </section>
 </div>
+
+</main>
 
 <footer>
   <div class="wrap">

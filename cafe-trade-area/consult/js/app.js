@@ -54,44 +54,63 @@
   }
 
   /* ── 입력 컨트롤 ─────────────────────────────── */
-  function control(k) {
+  /* id·describedby 를 밖에서 받는다. 라벨은 컨트롤을 감싸지 않고 for 로 가리키므로
+     (그래야 접근성 이름이 라벨 글자만 남는다) 연결에 쓸 id 가 필요하다.
+     칩·지역처럼 컨트롤이 버튼 묶음인 경우는 for 로 가리킬 대상이 없어
+     role="group" + aria-labelledby 로 묶는다. */
+  function control(k, id, help) {
     const m = CFIELDS.meta(k);
     const v = cond[k];
     const off = (m.목적지 === '개인정보' && !agreed) ? ' disabled' : '';
-    if (m.종류 === 'choice') {
-      return `<div class="chips" data-k="${k}">${m.선택지.map(o => `
-        <button type="button" class="chip ${v === o ? 'on' : ''}" data-v="${esc(o)}"${off}>${esc(o)}</button>`).join('')}</div>`;
-    }
-    if (m.종류 === 'multi') {
-      const set = Array.isArray(v) ? v : [];
-      return `<div class="chips multi" data-k="${k}">${m.선택지.map(o => `
-        <button type="button" class="chip ${set.includes(o) ? 'on' : ''}" data-v="${esc(o)}"${off}>${esc(o)}</button>`).join('')}</div>`;
+    const grp = ` role="group" aria-labelledby="${id}-lb" aria-describedby="${help}"`;
+    if (m.종류 === 'choice' || m.종류 === 'multi') {
+      const multi = m.종류 === 'multi';
+      const set = multi ? (Array.isArray(v) ? v : []) : null;
+      return `<div class="chips${multi ? ' multi' : ''}" data-k="${k}"${grp}>${m.선택지.map(o => {
+        const on = multi ? set.includes(o) : v === o;
+        return `
+        <button type="button" class="chip ${on ? 'on' : ''}" data-v="${esc(o)}"${off}
+          aria-pressed="${on}">${esc(o)}</button>`;
+      }).join('')}</div>`;
     }
     if (m.종류 === 'regions') {
       const list = Array.isArray(v) ? v : [];
-      return `<div class="regions" data-k="${k}">
+      return `<div class="regions" data-k="${k}"${grp}>
         ${list.map((r, i) => `<span class="rg"><b>${i + 1}</b>${esc(r)}
-          <button type="button" class="x" data-i="${i}" title="빼기">×</button></span>`).join('')}
-        <span class="rgadd"><input type="text" id="rg-in" placeholder="예: 성수동"
-          autocomplete="off" enterkeyhint="done"/><button type="button" id="rg-go">추가</button></span>
+          <button type="button" class="x" data-i="${i}"
+            aria-label="${esc(r)} 빼기">×</button></span>`).join('')}
+        <span class="rgadd">
+          <label class="vh" for="rg-in">지역 추가</label>
+          <input type="text" id="rg-in" name="지역추가" placeholder="예: 성수동…"
+            autocomplete="off" enterkeyhint="done"/><button type="button" id="rg-go">추가</button></span>
       </div>`;
     }
     const type = m.종류 === 'num' ? 'number' : (m.종류 === 'tel' ? 'tel' : 'text');
     const attrs = m.종류 === 'num'
       ? ` min="${m.최소 ?? 0}" max="${m.최대 ?? 999999}" step="${m.증분 ?? 1}" inputmode="decimal"` : '';
-    return `<input type="${type}" data-k="${k}" value="${esc(v)}"${attrs}${off}
-      autocomplete="off"${m.종류 === 'tel' ? ' placeholder="010-0000-0000"' : ''}/>`;
+    // autocomplete 는 끈다 — 고객 정보를 상담사 브라우저의 자동완성에 남기지 않는다
+    return `<input type="${type}" id="${id}" name="${esc(k)}" data-k="${k}" value="${esc(v)}"${attrs}${off}
+      autocomplete="off" spellcheck="false" aria-describedby="${help}"${m.종류 === 'tel' ? ' placeholder="010-0000-0000"' : ''}/>`;
   }
 
   const 뱃지 = d => `<span class="dest d-${d === '알고리즘' ? 'a' : d === '필터' ? 'f' : 'p'}">${d}</span>`;
 
+  /* 라벨이 뱃지·설명까지 감싸면 접근성 이름이 통째로 뭉친다 —
+     스크린리더가 '고객명필수개인정보 상담 기록에만 남습니다' 를 필드 이름으로 읽는다.
+     라벨은 글자만, 나머지는 aria-describedby 로 붙인다. */
   function field(k) {
     const m = CFIELDS.meta(k);
     const wide = (m.종류 === 'regions' || m.종류 === 'multi' || m.종류 === 'choice');
-    return `<label class="fld${wide ? ' wide' : ''}">
-      <span class="lb">${esc(m.라벨)}${m.필수 ? '<em>필수</em>' : ''}${뱃지(m.목적지)}</span>
-      ${control(k)}
-      <small>${esc(m.설명)}</small></label>`;
+    const id = 'f-' + k;
+    const help = `${id}-help`;
+    const 묶음 = (m.종류 === 'regions' || m.종류 === 'multi' || m.종류 === 'choice');
+    const lb = 묶음
+      ? `<span class="lb"><span id="${id}-lb">${esc(m.라벨)}</span>`
+      : `<label class="lb" for="${id}">${esc(m.라벨)}</label>`;
+    return `<div class="fld${wide ? ' wide' : ''}">
+      <div class="f-h">${lb}${m.필수 ? '<em>필수</em>' : ''}${뱃지(m.목적지)}${묶음 ? '</span>' : ''}</div>
+      ${control(k, id, help)}
+      <small id="${help}">${esc(m.설명)}</small></div>`;
   }
 
   /* ── 개인정보 동의 ─────────────────────────────── */
@@ -107,7 +126,7 @@
         <li>보관 — 이 브라우저 안에서만. 별도 서버 보관 없음</li>
         <li>파이프라인으로 내보내는 <code>조건.json</code> 에는 <b>개인정보가 들어가지 않습니다</b></li>
       </ul>
-      <label class="agree"><input type="checkbox" id="agree"${agreed ? ' checked' : ''}/>
+      <label class="agree"><input type="checkbox" id="agree" name="동의"${agreed ? ' checked' : ''}/>
         <span>고객에게 위 내용을 안내하고 동의를 받았습니다</span></label>
       ${agreed ? '' : '<p class="warn">동의 전에는 고객 정보를 입력·저장할 수 없습니다.</p>'}
     </fieldset>`;
@@ -129,8 +148,9 @@
       <legend>손익분기 미리보기</legend>
       <p class="note">월임대료를 가정해 <b>월 얼마를 팔아야 본전인지</b>를 냅니다.
         고정인건비·기타는 설정 파일이 아니라 화면용 폴백이며, 파이프라인은 <code>설정.yaml</code> 을 씁니다.</p>
-      <label class="fld inline"><span class="lb">가정 월임대료 (만원)</span>
-        <input type="number" id="pv-rent" value="${esc(rent)}" min="0" step="10"/></label>
+      <div class="fld inline"><div class="f-h"><label class="lb" for="pv-rent">가정 월임대료 (만원)</label></div>
+        <input type="number" id="pv-rent" name="가정월임대료" value="${esc(rent)}"
+          min="0" step="10" inputmode="decimal" autocomplete="off"/></div>
       <div class="bep">
         <div class="bep-n"><span>월 손익분기 매출</span><b>${nf(b.월BEP)}<small>만원</small></b></div>
         <div class="bep-n"><span>일 손익분기 매출</span><b>${nf(b.일BEP)}<small>만원</small></b></div>
