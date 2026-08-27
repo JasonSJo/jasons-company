@@ -1,0 +1,11 @@
+# Playwright MCP 산출물(스냅샷·콘솔 로그·스크린샷).
+# .mcp.json 이 --output-dir 로 /tmp 에 내보내지만, 옵션 없이 실행하면 여기에 떨어진다.
+.playwright-mcp/
+
+# 워크플로 조립 산출물 — 배포 확인용으로 로컬에서 만들어 보는 임시 디렉터리
+_site/
+
+# 파이프라인 산출물·바이트코드는 각 하위 .gitignore 가 이미 막는다:
+#   cafe-trade-area/analysis/.gitignore   output/ · __pycache__/ · *.pyc
+#   content-agency/automation/.gitignore  output/ · __pycache__/ · …
+# 여기에 다시 적으면 규칙이 두 곳에 생겨 한쪽만 고쳐지는 일이 생긴다.
