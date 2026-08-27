@@ -18,6 +18,7 @@ from pathlib import Path
 
 import pipeline
 from collect_transactions import lawd, summarize
+from m5_verdict import PY_PER_M2 as M5PY
 from common import nf, read_csv, write_json, write_text
 from config import FATAL_FLAGS, MODE_B_WEIGHTS, c, overridden, unvalidated
 
@@ -37,8 +38,9 @@ def header(settings: dict) -> list[str]:
 def market(sites: list[dict], path: Path) -> list[str]:
     """지역 실거래가 요약. collect_transactions.py 가 만든 표가 있을 때만 싣는다.
 
-    판정 계산에는 들어가지 않는다 — 매매가는 임대 조건이 아니고 상업용은 편차가 크다.
-    제시된 보증금·권리금·임대료가 그 지역 수준을 벗어나는지 대조하는 용도다.
+    매출 추정(M1~M4)에는 들어가지 않는다 — 매매가는 임대 조건이 아니고 상업용은
+    편차가 크다. **M5 판정에는 '시세 대조' 보류 신호로 들어간다**: 제시 임대료가
+    여기서 환산한 기대치의 시세대비_보류배수 를 넘으면 보류다(부결이 아니다).
     """
     if not path.exists():
         return []
@@ -60,10 +62,15 @@ def market(sites: list[dict], path: Path) -> list[str]:
         except (TypeError, ValueError):
             return 0.0
 
-    L = ["---", "", "## 지역 실거래가 (참고)", "",
-         "국토교통부 상업업무용 부동산 매매 신고 자료. **판정 계산에는 들어가지 않습니다** — "
+    L = ["---", "", "## 지역 실거래가 (M5 시세 대조 근거)", "",
+         "국토교통부 상업업무용 부동산 매매 신고 자료. **매출 추정에는 들어가지 않습니다** — "
          "매매가는 임대 조건이 아니고 상업용은 층·용도·전면에 따라 편차가 큽니다. "
-         "제시된 임대 조건이 지역 수준을 벗어나는지 대조하는 용도로만 보십시오.", "",
+         "M5 판정에서는 아래 중앙 단가를 "
+         f"`건물가치 = 중앙 만원/㎡ × 전용면적 × {M5PY:.6g}` · "
+         f"`기대 월임대료 = 건물가치 × {c('상업용_연임대수익률'):.3f} ÷ 12` 로 환산해, "
+         f"제시 임대료가 그 **{c('시세대비_보류배수'):g}배** 를 넘으면 보류로 잡습니다. "
+         f"거래 {int(c('시세대조_최소건수'))}건 미만인 지역은 대조하지 않습니다. "
+         "환산 계수는 미검증값이고 콘솔에서 조정할 수 있습니다.", "",
          "| 지역코드 | 후보지 | 건수 | 중앙 만원/㎡ | 중앙 거래금액(만원) | 최근 거래 |",
          "|---|---|---:|---:|---:|---|"]
     for code, names in regions.items():
@@ -175,8 +182,6 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="점포개발 심의표 생성 (M1~M5)")
     pipeline.add_common_args(ap, ROOT)
     ap.add_argument("--out", default=str(ROOT / "output" / "심의표.md"))
-    ap.add_argument("--실거래", dest="실거래", default=str(ROOT / "output" / "실거래가.csv"),
-                    help="collect_transactions.py 산출물 (없으면 그 절을 싣지 않는다)")
     ap.add_argument("--json", default=str(ROOT / "output" / "심의결과.json"))
     args = ap.parse_args()
 
@@ -185,7 +190,8 @@ def main() -> int:
         print(f"후보지 CSV 를 찾을 수 없습니다: {args.sites}", file=sys.stderr)
         return 1
     res = pipeline.analyze_all(data["sites"], data["stores"], data["isos"], data["cells"],
-                               data["points"], data["competitors"], data["settings"])
+                               data["points"], data["competitors"], data["settings"],
+                               market=data["market"])
     write_text(Path(args.out), render(res, Path(args.실거래)))
     write_json(Path(args.json), export(res))
 
@@ -206,7 +212,8 @@ def export(res: dict) -> dict:
             "S_풀최대": r.get("S_풀최대"), "S_게이트_축퇴": r.get("S_게이트_축퇴"),
             "상권": {k: v for k, v in r["상권"].items() if k not in ("P5", "P10")},
             "수요": r["수요"], "경쟁": {k: v for k, v in r["경쟁"].items()},
-            "매출": r["매출"], "판정": r["판정"], "경고": r["경고"],
+            "매출": r["매출"], "판정": r["판정"], "시세": r.get("시세"),
+            "경고": r["경고"],
             "입력": r["후보지"],
         }
     m = res["모델"]

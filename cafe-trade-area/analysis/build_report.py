@@ -149,7 +149,8 @@ def main() -> int:
 
     data = pipeline.load_all(ROOT, args)
     res = pipeline.analyze_all(data["sites"], data["stores"], data["isos"], data["cells"],
-                               data["points"], data["competitors"], data["settings"])
+                               data["points"], data["competitors"], data["settings"],
+                               market=data["market"])
     targets = [r for r in res["후보지"] if not args.site or args.site in r["이름"]]
     if not targets:
         print(f"'{args.site}' 와 일치하는 후보지가 없습니다.")

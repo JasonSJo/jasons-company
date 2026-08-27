@@ -9,10 +9,12 @@
   python3 collect_transactions.py                     # dry-run (호출 없음)
   DATA_GO_KR_KEY=... python3 collect_transactions.py --live --months 12
 
-⚠ **이 값은 M1~M6 계산에 들어가지 않는다.** 매매 실거래가는 임대 조건이 아니고,
-   상업용 매물은 층·용도·전면에 따라 편차가 커서 매출 추정의 설명변수가 될 수 없다.
-   심의표에 **지역 시세 참고**로만 실린다 — 제시된 보증금·권리금·임대료가 그 동네
-   수준에서 벗어나는지 눈으로 대조하는 용도다.
+⚠ **매출 추정(M1~M4)에는 들어가지 않는다.** 매매 실거래가는 임대 조건이 아니고,
+   상업용 매물은 층·용도·전면에 따라 편차가 커서 매출의 설명변수가 될 수 없다.
+   **M5 판정에는 '지역 시세 대조' 신호로만 들어간다** — 제시 임대료가 지역 시세에서
+   환산한 기대치를 크게 넘으면 *보류*(부결이 아니다). 환산에 쓰는 연임대수익률과
+   보류 배수는 미검증 계수이고 콘솔에서 조정할 수 있다(config.상업용_연임대수익률 등).
+   표본이 시세대조_최소건수 미만이면 대조 자체를 건너뛴다.
 
 ⚠ **엔드포인트와 응답 필드명은 실제 호출로 검증되지 않았다.** 공공데이터포털이
    서비스 주소와 태그명을 바꾼 이력이 있어, 파서는 여러 표기를 함께 받아들이고
@@ -156,6 +158,82 @@ def summarize(rows: list[dict]) -> dict:
     }
 
 
+def regions_of(sites: list[dict], name_key: str = "후보지명") -> dict:
+    """후보지 CSV → {지역코드: [후보지명, ...]}. 법정동코드가 없는 행은 조회할 수 없다."""
+    out = {}
+    for r in sites:
+        name = (r.get(name_key) or "").strip()
+        code = lawd(r.get("법정동코드"))
+        if name and code:
+            out.setdefault(code, []).append(name)
+    return out
+
+
+def gather(key: str, regions: dict, months: int, endpoint: str = ENDPOINT,
+           log=None) -> tuple[list[dict], list[str]]:
+    """지역코드별로 최근 N개월을 훑어 (거래행, 실패구간) 을 낸다.
+
+    한 구간이 실패해도 나머지는 계속 모은다 — 신고 지연으로 특정 월이 비는 것은 정상이다.
+    """
+    all_rows, problems = [], []
+    for region, names in regions.items():
+        got = 0
+        if log:
+            log(f"  · {region} ({'·'.join(names)})")
+        for ym in months_back(months):
+            body, err = fetch(key, region, ym, endpoint)
+            if err:
+                problems.append(f"{region} {ym}: {err}")
+                continue
+            rows, perr = parse(body)
+            if perr and not rows:
+                problems.append(f"{region} {ym}: {perr}")
+                if len(problems) == 1 and log:   # 첫 실패의 실제 응답을 보여준다
+                    log("    ↓ 응답 앞부분 (형식이 다르면 이걸 보고 FIELDS 를 고치십시오)")
+                    log("    " + body[:400].replace("\n", "\n    "))
+                continue
+            for r in rows:
+                r["지역코드"] = region
+            all_rows += rows
+            got += len(rows)
+        if log:
+            log(f"    {got}건")
+    return all_rows, problems
+
+
+def write_rows(path: Path, rows: list[dict]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8-sig", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=HEADER)
+        w.writeheader()
+        w.writerows([{k: r.get(k, "") for k in HEADER} for r in rows])
+
+
+def load_summaries(path: Path) -> dict:
+    """저장된 실거래가 CSV → {지역코드: 요약}. M5 가 이 요약을 대조에 쓴다.
+
+    금액을 못 읽은 행은 버린다 — 0원 거래가 중앙값을 끌어내리면 기대 임대료가
+    실제보다 낮아지고, 멀쩡한 후보지가 '시세 초과' 로 보류된다.
+    """
+    if not path or not Path(path).exists():
+        return {}
+    by_code: dict[str, list[dict]] = {}
+    for r in read_csv(Path(path)):
+        code = (r.get("지역코드") or "").strip()
+        amt = num(r.get("거래금액_만원"))
+        if not code or not amt:
+            continue
+        unit = num(r.get("만원_per_m2"))
+        by_code.setdefault(code, []).append({
+            # 면적을 못 읽어 단가가 비는 행은 '' 로 둔다. 0 을 넣으면 중앙값이 끌려 내려가
+            # 기대 임대료가 낮아지고 멀쩡한 후보지가 '시세 초과' 로 보류된다.
+            "만원_per_m2": unit if unit > 0 else "",
+            "거래금액_만원": amt,
+            "거래일": (r.get("거래일") or "").strip(),
+        })
+    return {code: summarize(rows) for code, rows in by_code.items()}
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="국토교통부 실거래가 수집 (심의 참고용)")
     ap.add_argument("--sites", default=str(ROOT / "후보지.example.csv"))
@@ -170,12 +248,7 @@ def main() -> int:
     out.parent.mkdir(parents=True, exist_ok=True)
 
     sites = read_csv(Path(args.sites)) if Path(args.sites).exists() else []
-    regions = {}
-    for r in sites:
-        name = (r.get("후보지명") or "").strip()
-        code = lawd(r.get("법정동코드"))
-        if name and code:
-            regions.setdefault(code, []).append(name)
+    regions = regions_of(sites)
 
     if not args.live:
         # 실거래 금액을 지어내지 않는다 — 심의표에 그대로 실리면 실측으로 오인된다.
@@ -201,39 +274,14 @@ def main() -> int:
               file=sys.stderr)
         return 1
 
-    all_rows, problems = [], []
-    for region, names in regions.items():
-        got = 0
-        print(f"  · {region} ({'·'.join(names)})")
-        for ym in months_back(args.months):
-            body, err = fetch(key, region, ym, args.endpoint)
-            if err:
-                problems.append(f"{region} {ym}: {err}")
-                continue
-            rows, perr = parse(body)
-            if perr and not rows:
-                problems.append(f"{region} {ym}: {perr}")
-                if len(problems) == 1:      # 첫 실패의 실제 응답을 보여준다
-                    print("    ↓ 응답 앞부분 (형식이 다르면 이걸 보고 FIELDS 를 고치십시오)",
-                          file=sys.stderr)
-                    print("    " + body[:400].replace("\n", "\n    "), file=sys.stderr)
-                continue
-            for r in rows:
-                r["지역코드"] = region
-            all_rows += rows
-            got += len(rows)
-        print(f"    {got}건")
-
-    with out.open("w", encoding="utf-8-sig", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=HEADER)
-        w.writeheader()
-        w.writerows([{k: r.get(k, "") for k in HEADER} for r in all_rows])
+    all_rows, problems = gather(key, regions, args.months, args.endpoint, log=print)
+    write_rows(out, all_rows)
 
     lines = ["# 지역 실거래가 요약 (심의 참고)", "",
              f"국토교통부 상업업무용 부동산 매매 신고 자료 · 최근 {args.months}개월", "",
-             "> **이 값은 판정 계산에 들어가지 않습니다.** 매매가는 임대 조건이 아니고 "
-             "상업용은 층·용도·전면에 따라 편차가 큽니다. 제시된 보증금·권리금·임대료가 "
-             "그 지역 수준에서 벗어나는지 대조하는 용도로만 보십시오.", "",
+             "> **매출 추정에는 들어가지 않습니다.** 매매가는 임대 조건이 아니고 "
+             "상업용은 층·용도·전면에 따라 편차가 큽니다. M5 판정에서는 제시 임대료가 "
+             "지역 시세 환산 기대치를 크게 넘을 때 **보류** 신호로만 쓰입니다.", "",
              "| 지역코드 | 후보지 | 건수 | 중앙 만원/㎡ | 중앙 거래금액(만원) | 최근 거래 |",
              "|---|---|---:|---:|---:|---|"]
     for region, names in regions.items():
@@ -256,7 +304,8 @@ def main() -> int:
         print("   ! 한 건도 못 받았습니다. 서비스키 승인 상태와 엔드포인트를 확인하십시오.",
               file=sys.stderr)
         return 2
-    print("   🙋 매매 실거래가는 임대 조건이 아닙니다 — 판정이 아니라 대조에만 쓰십시오.")
+    print("   🙋 매매 실거래가는 임대 조건이 아닙니다 — M5 에서 보류 신호로만 쓰이고, "
+          "매출 추정에는 들어가지 않습니다.")
     return 0
 
 

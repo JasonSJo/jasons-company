@@ -11,6 +11,8 @@ Mode A 회귀의 설명변수가 만들어지고, Mode B 앵커링의 S 가 같�
 """
 from __future__ import annotations
 
+import os
+import sys
 from pathlib import Path
 
 import yaml
@@ -21,6 +23,7 @@ import m3_huff as M3
 import m4_revenue as M4
 import m5_verdict as M5
 import config as C
+import collect_transactions as TX
 from common import read_csv, to_f
 from config import tier_of
 
@@ -58,8 +61,12 @@ def _build(rec_row: dict, name_key: str, isos: dict, cells: list, points: list,
 
 def analyze_all(sites: list[dict], stores: list[dict], isos: dict, cells: list,
                 points: list, competitors: list, settings: dict,
-                measured_mape: float = None) -> dict:
-    """후보지 전체를 심의 가능한 형태로 만든다."""
+                measured_mape: float = None, market: dict = None) -> dict:
+    """후보지 전체를 심의 가능한 형태로 만든다.
+
+    market 은 {지역코드: 실거래가 요약}. 후보지의 법정동코드 앞 5자리로 찾아
+    M5 의 시세 대조에 넘긴다. 비어 있으면 대조를 건너뛴다 — 없는 근거로 판단하지 않는다.
+    """
     days = to_f(settings.get("영업일수"), 30) or 30
 
     cand = [_build(r, "후보지명", isos, cells, points, competitors, settings, False)
@@ -89,8 +96,11 @@ def analyze_all(sites: list[dict], stores: list[dict], isos: dict, cells: list,
             if ov > 0:
                 overlaps.append({"점포명": st["이름"], "overlap": ov,
                                  "월매출_만원": to_f(st["후보지"].get("월매출_만원"))})
+        # 요약 자체도 레코드에 남긴다 — 콘솔이 M5 를 다시 계산할 때 같은 근거를 써야
+        # 화면과 CLI 의 판정이 갈리지 않는다.
+        rec["시세"] = mkt = (market or {}).get(TX.lawd(rec["후보지"].get("법정동코드")))
         rec["판정"] = M5.judge(rec["후보지"], rec["매출"], settings, rec.get("S", 0.0),
-                              overlaps, rec.get("S_풀최대"))
+                              overlaps, rec.get("S_풀최대"), mkt)
         rec["경고"] += list(rec["매출"].get("경고", []))
 
     return {
@@ -129,15 +139,46 @@ def load_all(base: Path, args) -> dict:
     # 심의 콘솔에서 내보낸 계수.json 이 있으면 계수 레지스트리와 운영 설정에 얹는다.
     applied = C.apply_overrides(getattr(args, "계수", None) or default_coef_path(base))
     settings = merge_ops(settings, applied.get("운영"), record=True)
+    sites = read_csv(Path(args.sites)) if Path(args.sites).exists() else []
     return {
-        "sites": read_csv(Path(args.sites)) if Path(args.sites).exists() else [],
+        "sites": sites,
         "stores": read_csv(Path(args.stores)) if Path(args.stores).exists() else [],
         "cells": M2.load_cells(Path(args.cells)) if Path(args.cells).exists() else [],
         "points": M2.load_points(Path(args.points)) if Path(args.points).exists() else [],
         "competitors": M3.load_competitors(Path(args.competitors)) if Path(args.competitors).exists() else [],
         "isos": M1.load_isochrones(Path(args.iso)) if args.iso and Path(args.iso).exists() else {},
         "settings": settings,
+        "market": load_market(sites, args),
     }
+
+
+def load_market(sites: list[dict], args) -> dict:
+    """M5 시세 대조에 쓸 {지역코드: 실거래가 요약} 을 준비한다.
+
+    --실거래-수집 이 켜져 있고 DATA_GO_KR_KEY 가 있으면 국토교통부 API 를 직접
+    호출해 CSV 를 새로 쓰고, 그렇지 않으면 이미 있는 CSV 를 읽는다. 어느 쪽도
+    안 되면 빈 dict — 그러면 M5 는 대조를 통째로 건너뛴다. **금액을 지어내지 않는다.**
+    """
+    path = Path(getattr(args, "실거래", "") or "")
+    if getattr(args, "실거래_수집", False):
+        key = os.environ.get("DATA_GO_KR_KEY", "").strip()
+        regions = TX.regions_of(sites)
+        if not key:
+            print("! DATA_GO_KR_KEY 가 없어 실거래가를 수집하지 않았습니다 — "
+                  "저장된 표가 있으면 그것만 씁니다.", file=sys.stderr)
+        elif not regions:
+            print("! 후보지에 법정동코드가 없어 실거래가를 조회할 수 없습니다 — "
+                  "입력 페이지에서 주소를 검색해 채우십시오.", file=sys.stderr)
+        else:
+            rows, problems = TX.gather(key, regions, int(getattr(args, "실거래_개월", 12)),
+                                       log=print)
+            if rows:
+                TX.write_rows(path, rows)
+                print(f"  실거래 {len(rows)}건 → {path}")
+            if problems:
+                print(f"  ⚠ 실거래 수집 실패 {len(problems)}구간 (첫 건: {problems[0]})",
+                      file=sys.stderr)
+    return TX.load_summaries(path)
 
 
 # 콘솔이 내보내는 파일명은 ASCII(coefficients.json)다 — 브라우저·OS 에 따라
@@ -164,4 +205,12 @@ def add_common_args(ap, base: Path):
     ap.add_argument("--계수", dest="계수", default=str(default_coef_path(base)),
                     help="콘솔에서 입력한 계수 override "
                          "(기본: 계수.json 또는 coefficients.json, 없으면 무시)")
+    # M5 지역 시세 대조에 쓰는 국토교통부 실거래가. 파일이 없으면 대조를 건너뛴다.
+    ap.add_argument("--실거래", dest="실거래", default=str(base / "output" / "실거래가.csv"),
+                    help="실거래가 CSV (collect_transactions.py 산출물)")
+    ap.add_argument("--실거래-수집", dest="실거래_수집", action="store_true",
+                    help="분석 전에 국토교통부 API 로 실거래가를 직접 받아온다 "
+                         "(DATA_GO_KR_KEY 필요)")
+    ap.add_argument("--실거래-개월", dest="실거래_개월", type=int, default=12,
+                    help="--실거래-수집 시 훑을 최근 개월 수 (기본 12)")
     return ap
