@@ -12,9 +12,18 @@
   const $$ = (s, r) => Array.prototype.slice.call((r || document).querySelectorAll(s));
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g,
     c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  // 만원 단위 표기 — 소수점은 버린다(BEP 는 십만원 단위 이하가 의미 없다)
+  const nf = v => Math.round(Number(v) || 0).toLocaleString('ko-KR');
 
   let sites = load();
   let cur = 0;
+
+  // 간편/전체 모드. 처음 오는 사람에게는 간편이 기본이다 — 26칸을 먼저 보여 주면
+  // 채울 수 없는 칸 앞에서 멈춘다. 고른 모드는 이 브라우저에만 남는다.
+  const MODEKEY = 'cafe-trade-area/입력모드/v1';
+  let mode = (() => { try { return localStorage.getItem(MODEKEY) || '간편'; } catch (e) { return '간편'; } })();
+  let 마진율 = '';      // 간편 입력의 두 칸. CSV 열이 아니라 화면 상태다
+  let 임대료 = '';
 
   /* ── 저장 ─────────────────────────────── */
   function load() {
@@ -285,6 +294,87 @@
     });
   }
 
+  /* ── 간편 입력 ─────────────────────────────────
+     주소와 마진율만 받고 나머지는 자리표시자로 채운다. 채운 값이 무엇이고 왜 그
+     값인지를 같은 화면에 펼쳐 둔다 — 접어 두면 가정이 실측처럼 굳는다. */
+  function quickBlock(site) {
+    const m = QUICK.margin(마진율);
+    const rent = String(임대료 || '').trim();
+    const b = m ? QUICK.bep(마진율, rent || 0) : null;
+    const 남은 = QUICK.목록().filter(x => String(site[x.키] ?? '').trim() === '');
+
+    const 표 = (!m) ? '' : (rent
+      ? `<div class="bep">
+           <div class="bep-n"><span>월 손익분기 매출</span><b>${nf(b.월BEP)}<small>만원</small></b></div>
+           <div class="bep-n"><span>일 손익분기 매출</span><b>${nf(b.일BEP)}<small>만원</small></b></div>
+           <p class="note">고정비 F ${nf(b.F)}만원 ÷ 공헌이익률 ${(m * 100).toFixed(0)}%.
+             임대료 ${nf(rent)} + 관리비 ${nf(b.추정관리비)}(추정) +
+             고정인건비 ${nf(QUICK.고정비폴백.고정인건비_월_만원)} + 기타 ${nf(QUICK.고정비폴백.기타_월_만원)}.
+             <b>뒤 두 항목은 설정 파일의 값이 아니라 화면용 폴백</b>이며, 파이프라인은 설정.yaml 을 씁니다.</p>
+         </div>`
+      : `<div class="bep">
+           <p class="note" style="margin:0 0 8px">임대료를 아직 모르면 여기까지 답할 수 있습니다 —
+             <b>임대료가 얼마일 때 월 얼마를 팔아야 본전인지</b>.</p>
+           <table class="curve"><thead><tr><th>월임대료</th><th>월 BEP</th><th>일 BEP</th></tr></thead><tbody>
+           ${QUICK.bepCurve(마진율).map(r => `<tr><td class="mono">${nf(r.임대료)}</td>
+             <td class="mono">${nf(r.월BEP)}</td><td class="mono">${nf(r.일BEP)}</td></tr>`).join('')}
+           </tbody></table>
+         </div>`);
+
+    return `<fieldset class="quick">
+      <legend>간편 입력</legend>
+      <p class="note">주소와 마진율만 넣으면 나머지 칸은 <b>가정값</b>으로 채웁니다.
+        가정값은 실사로 반드시 대체해야 합니다 — 아래에 무엇을 어떤 근거로 채우는지 전부 적어 두었습니다.</p>
+
+      <div class="grid">
+        <label class="fld"><span class="lb">마진율 (공헌이익률)<em>필수</em></span>
+          <input type="number" id="q-margin" value="${esc(마진율)}" min="1" max="99" step="1"
+            placeholder="55" inputmode="decimal"/>
+          <small>매출에서 변동비를 뺀 비율. 55 또는 0.55 둘 다 됩니다. 변동비율 v = 1 − 마진율</small></label>
+        <label class="fld"><span class="lb">월임대료 <small>(만원 · 선택)</small></span>
+          <input type="number" id="q-rent" value="${esc(임대료)}" min="0" step="1" placeholder="모르면 비워 두세요"/>
+          <small>알면 손익분기 매출이 한 줄로 나옵니다. 모르면 아래 구간표로 대신합니다.</small></label>
+      </div>
+      ${표}
+
+      <div class="assume">
+        <div class="assume-h">채울 가정값 <b>${남은.length}</b>개
+          <span class="ok">치명 항목 4종은 채우지 않습니다 — 빈칸(미확인)으로 둡니다</span></div>
+        <table class="assume-t"><tbody>
+          ${QUICK.목록().map(x => {
+            const 이미 = String(site[x.키] ?? '').trim();
+            return `<tr class="${이미 ? 'kept' : ''}">
+              <td class="k">${esc(x.키)}</td>
+              <td class="v mono">${esc(이미 || x.값)}</td>
+              <td class="w">${이미 ? '이미 입력한 값을 유지합니다' : esc(x.근거)}</td></tr>`;
+          }).join('')}
+        </tbody></table>
+      </div>
+
+      <div class="quick-act">
+        <button class="primary" type="button" id="q-fill"${m ? '' : ' disabled'}>가정값으로 채우기</button>
+        <span class="note">${m
+          ? (String(site.주소 || '').trim() ? '' : '⚠ 위치를 먼저 확정하세요 — 좌표 없이는 상권을 잡지 못합니다.')
+          : '마진율을 넣으면 활성화됩니다.'}</span>
+      </div>
+    </fieldset>`;
+  }
+
+  function wireQuick() {
+    const el = $('#pane');
+    const mi = el.querySelector('#q-margin'), ri = el.querySelector('#q-rent');
+    // 입력 중 재렌더는 포커스를 뺏는다 — 값만 담아 두고 blur/change 에서 다시 그린다
+    if (mi) { mi.oninput = () => { 마진율 = mi.value; }; mi.onchange = () => { 마진율 = mi.value; render(); }; }
+    if (ri) { ri.oninput = () => { 임대료 = ri.value; }; ri.onchange = () => { 임대료 = ri.value; render(); }; }
+    const fb = el.querySelector('#q-fill');
+    if (fb) fb.onclick = () => {
+      const r = QUICK.fill(sites[cur], { 월임대료_만원: 임대료 });
+      sites[cur] = r.site;
+      save(); render();
+      toast(r.채움.length ? `${r.채움.length}개 칸을 가정값으로 채웠습니다` : '채울 빈칸이 없습니다');
+    };
+  }
+
   function renderForm() {
     const site = sites[cur];
     const nm = String(site.후보지명 || '').trim() || '(이름 없음)';
@@ -297,16 +387,24 @@
           <button class="sm ghost danger" type="button" id="del">삭제</button>
         </div>
       </div>
+      <div class="modes" role="tablist">
+        <button type="button" class="mode ${mode === '간편' ? 'on' : ''}" data-mode="간편">간편 입력
+          <small>주소 + 마진율</small></button>
+        <button type="button" class="mode ${mode === '전체' ? 'on' : ''}" data-mode="전체">전체 입력
+          <small>실사 결과 20칸</small></button>
+      </div>
       ${FIELDS.GROUPS.map(g => {
         const manual = g.항목.map(([k]) => k).filter(k => !FIELDS.meta(k).자동);
         // 위치 묶음은 주소 검색 블록이 대신한다
         if (!manual.length) return placeBlock(site, g);
+        if (mode === '간편') return '';
         return `<fieldset>
           <legend>${esc(g.이름)}</legend>
           ${g.설명 ? `<p class="note">${g.설명}</p>` : ''}
           <div class="grid">${manual.map(k => field(site, k)).join('')}</div>
         </fieldset>`;
-      }).join('')}`;
+      }).join('')}
+      ${mode === '간편' ? quickBlock(site) : ''}`;
 
     $$('#pane [data-k]').forEach(el => {
       el.onchange = () => {
@@ -315,7 +413,11 @@
         render();
       };
     });
+    $$('#pane .mode').forEach(b => {
+      b.onclick = () => { mode = b.dataset.mode; try { localStorage.setItem(MODEKEY, mode); } catch (e) {} render(); };
+    });
     wirePlace(site);
+    if (mode === '간편') wireQuick();
     $('#dup').onclick = () => {
       const copy = Object.assign({}, sites[cur]);
       copy.후보지명 = (copy.후보지명 || '후보지') + ' 사본';
