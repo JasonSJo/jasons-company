@@ -46,7 +46,7 @@ echo -e "\n[2/5] M3 경쟁점"
 "$PY" collect_competitors.py --sites "$SITES" --stores "$STORES" $LIVE
 
 echo
-echo "── 실거래가 (심의 참고 · 판정 계산에는 들어가지 않음) ──"
+echo "── 실거래가 (M5 시세 대조 근거 · 매출 추정에는 미사용) ──"
 "$PY" collect_transactions.py --sites "$SITES" $LIVE || \
   echo "  ! 실거래가 수집을 건너뜁니다 — 심의는 계속 진행됩니다."
 

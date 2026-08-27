@@ -7,7 +7,8 @@ const M5 = (() => {
   /* 판정 임계값. 기본값은 명세 고정값이고 config.py 와 같아야 한다.
      콘솔에서는 계수 레지스트리(config.js)가 사용자 입력값으로 덮어쓸 수 있고,
      레지스트리가 없는 환경(node 대조 러너)에서는 아래 기본값이 그대로 쓰인다. */
-  const 기본임계 = { 부결_마진: 0.15, 보류_마진: 0.30, 보류_점수: 70.0, 보류_중첩: 0.30 };
+  const 기본임계 = { 부결_마진: 0.15, 보류_마진: 0.30, 보류_점수: 70.0, 보류_중첩: 0.30,
+                    상업용_연임대수익률: 0.045, 시세대비_보류배수: 2.0, 시세대조_최소건수: 5 };
   const K = n => (typeof CFG !== 'undefined' && CFG && CFG.c) ? CFG.c(n) : 기본임계[n];
   const FATAL = [
     ['근저당_과다', '등기부상 근저당 과다 또는 선순위 권리로 보증금 회수 불확실'],
@@ -62,8 +63,33 @@ const M5 = (() => {
     };
   }
 
-  /* 명세의 3단 분기. 치명 플래그는 점수·매출과 무관하게 단독으로 부결시킨다. */
-  function judge(site, revenue, settings, S, overlaps, kappa, sPoolMax) {
+  const PY_PER_M2 = 3.305785;          // 1평 = 3.305785㎡
+
+  /* 지역 매매 시세로 기대 월임대료를 환산한다 — m5_verdict.market_rent 의 포팅.
+     실거래가는 매매가라 임대 조건과 직접 비교할 수 없다. 그 간극을 메우는 것이
+     연임대수익률이고, 이 값은 미검증 계수다. 표본이 적거나 면적·시세가 없으면
+     대조하지 않는다 — 없는 근거로 판단하지 않는다. */
+  function marketRent(site, market) {
+    if (!market) return null;
+    const unit = f(market.만원_per_m2_중앙);
+    const n = Math.trunc(f(market.건수));
+    const areaPy = f(site.전용면적_평);
+    if (unit <= 0 || areaPy <= 0 || n < Math.trunc(K('시세대조_최소건수'))) return null;
+    const value = unit * areaPy * PY_PER_M2;
+    const expected = value * K('상업용_연임대수익률') / 12.0;
+    if (expected <= 0) return null;
+    const rent = f(site.월임대료_만원);
+    return {
+      건수: n, 만원_per_m2_중앙: unit,
+      추정_건물가치_만원: value, 기대_월임대료_만원: expected,
+      제시_월임대료_만원: rent,
+      배수: expected ? rent / expected : null,
+    };
+  }
+
+  /* 명세의 3단 분기. 치명 플래그는 점수·매출과 무관하게 단독으로 부결시킨다.
+     market 은 그 후보지가 속한 지역의 실거래가 요약(없으면 대조를 건너뛴다). */
+  function judge(site, revenue, settings, S, overlaps, kappa, sPoolMax, market) {
     const 부결_마진 = K('부결_마진'), 보류_마진 = K('보류_마진');
     const 보류_점수 = K('보류_점수'), 보류_중첩 = K('보류_중첩');
     const v = variableRate(settings);
@@ -76,6 +102,7 @@ const M5 = (() => {
 
     const can = cannibalization(overlaps, kappa);
     const overlap = can.최대_overlap;
+    const mkt = marketRent(site, market);
     const fatal = fatalFlags(site);
     const unchk = unchecked(site);
 
@@ -104,6 +131,11 @@ const M5 = (() => {
       if (overlap > 보류_중첩) {
         hold.push(`자사 상권 중첩 ${pf(overlap)} > ${pf(보류_중첩)}`);
       }
+      if (mkt && mkt.배수 !== null && mkt.배수 > K('시세대비_보류배수')) {
+        hold.push(`임대료가 지역 시세 기대치의 ${nf(mkt.배수, 2)}배 ` +
+          `(제시 ${nf(mkt.제시_월임대료_만원)} vs 기대 ${nf(mkt.기대_월임대료_만원)}만원, ` +
+          `실거래 ${mkt.건수}건) > ${nf(K('시세대비_보류배수'), 2)}배`);
+      }
       verdict = hold.length ? '보류' : '통과';
       hold.forEach(x => reasons.push(x));
     }
@@ -121,6 +153,13 @@ const M5 = (() => {
       notes.push(`⛔ 치명 항목 ${unchk.length}건이 미확인 상태입니다 — ` +
         `등기·임대인·소송·인허가 실사를 마치기 전의 '통과'는 잠정입니다.`);
     }
+    if (mkt) {
+      notes.push(`지역 시세 대조: 실거래 ${mkt.건수}건 중앙 ` +
+        `${nf(mkt.만원_per_m2_중앙, 1)}만원/㎡ → 기대 월임대료 ` +
+        `${nf(mkt.기대_월임대료_만원)}만원 (연수익률 ` +
+        `${pf(K('상업용_연임대수익률'), 1)} 가정 · 미검증). ` +
+        `매매가를 임대료로 환산한 값이므로 참고선입니다.`);
+    }
     if (can.잠식액_합_만원 > 0) {
       notes.push(`자사 기존점 잠식 추정 ${nf(can.잠식액_합_만원)}만원/월 ` +
         `(κ=${kappa} 미검증) — 신규 매출에서 차감해 순증을 보십시오.`);
@@ -130,7 +169,7 @@ const M5 = (() => {
       판정: verdict, 사유: reasons, 비고: notes,
       치명플래그: fatal, 치명_미확인: unchk,
       변동비율: v, 고정비: fc, BEP_만원: bep,
-      margin, margin_low: marginLow, S, 카니발: can,
+      margin, margin_low: marginLow, S, 카니발: can, 시세대조: mkt,
       순증_월매출_만원: rMed ? rMed - can.잠식액_합_만원 : null,
     };
   }
@@ -138,7 +177,7 @@ const M5 = (() => {
   const 상수 = () => ({ 부결_마진: K('부결_마진'), 보류_마진: K('보류_마진'),
                        보류_점수: K('보류_점수'), 보류_중첩: K('보류_중첩') });
 
-  return { judge, variableRate, fixedCost, cannibalization, fatalFlags, unchecked, f, 상수 };
+  return { judge, variableRate, fixedCost, cannibalization, marketRent, fatalFlags, unchecked, f, 상수 };
 })();
 
 if (typeof module !== 'undefined' && module.exports) module.exports = M5;

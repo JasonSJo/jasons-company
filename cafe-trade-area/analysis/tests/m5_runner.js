@@ -9,7 +9,7 @@ process.stdin.on('data', d => { buf += d; });
 process.stdin.on('end', () => {
   const cases = JSON.parse(buf);
   const out = cases.map(c => {
-    const r = M5.judge(c.site, c.revenue, c.settings, c.S, c.overlaps, c.kappa, c.sPoolMax);
+    const r = M5.judge(c.site, c.revenue, c.settings, c.S, c.overlaps, c.kappa, c.sPoolMax, c.market);
     return {
       판정: r.판정, 사유: r.사유, 비고: r.비고,
       치명플래그: r.치명플래그, 치명_미확인: r.치명_미확인,
@@ -17,6 +17,7 @@ process.stdin.on('end', () => {
       margin: r.margin, margin_low: r.margin_low,
       최대_overlap: r.카니발.최대_overlap, 잠식액_합_만원: r.카니발.잠식액_합_만원,
       순증_월매출_만원: r.순증_월매출_만원,
+      시세대조: r.시세대조,
     };
   });
   process.stdout.write(JSON.stringify(out));
