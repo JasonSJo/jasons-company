@@ -188,10 +188,12 @@
       ${PLACE.hasKey() ? '' : `<p class="keyhint">카카오 JS 키가 없어 <b>주소만</b> 고를 수 있습니다 —
         좌표는 지도에서 복사해 붙여넣으세요. <button type="button" class="sm ghost" id="keyopen">키 넣기</button></p>`}
       <div id="keybox" class="keybox hide">
-        <label for="keyin">카카오맵 JS 키 <small>(도메인 제한으로 보호되므로 이 브라우저에만 저장됩니다)</small></label>
+        <label for="keyin">카카오맵 JS 키</label>
+        <small id="keyin-help">(도메인 제한으로 보호되므로 이 브라우저에만 저장됩니다)</small>
         <div class="searchrow">
           <input type="text" id="keyin" name="카카오키" value="${esc(PLACE.getKey())}"
-            autocomplete="off" spellcheck="false" placeholder="예: 3a1b…"/>
+            autocomplete="off" spellcheck="false" placeholder="예: 3a1b…"
+            aria-describedby="keyin-help"/>
           <button class="primary" type="button" id="keysave">저장</button>
         </div>
       </div>
@@ -349,7 +351,7 @@
           <input type="number" id="q-margin" name="마진율" value="${esc(마진율)}" min="1" max="99" step="1"
             placeholder="예: 55…" inputmode="decimal" autocomplete="off" aria-describedby="q-margin-help"/>
           <small id="q-margin-help">매출에서 변동비를 뺀 비율. 55 또는 0.55 둘 다 됩니다. 변동비율 v = 1 − 마진율</small></div>
-        <div class="fld"><div class="f-h"><label class="lb" for="q-rent">월임대료 <small>(만원 · 선택)</small></label></div>
+        <div class="fld"><div class="f-h"><label class="lb" for="q-rent">월임대료 (만원)</label><em>선택</em></div>
           <input type="number" id="q-rent" name="월임대료" value="${esc(임대료)}" min="0" step="1"
             placeholder="예: 300… (모르면 비워 두세요)" inputmode="decimal" autocomplete="off"
             aria-describedby="q-rent-help"/>

@@ -193,8 +193,8 @@ fieldset.place .note{margin-bottom:12px}
 
 .keyhint{margin:9px 0 0;font-size:12.5px;color:var(--mute)}
 .keybox{margin-top:11px;padding:12px 14px;border:1px solid var(--border);background:var(--bg)}
-.keybox label{display:block;font-size:12.5px;font-weight:500;color:var(--soft);margin-bottom:6px}
-.keybox small{font-weight:400;color:var(--mute)}
+.keybox label{display:block;font-size:12.5px;font-weight:500;color:var(--soft)}
+.keybox small{display:block;font-size:12.5px;font-weight:400;color:var(--mute);margin-bottom:6px}
 
 .picked{margin-top:14px;border:1px solid var(--border);border-left-width:3px;
   border-left-color:var(--sig);background:var(--bg);padding:13px 16px}
