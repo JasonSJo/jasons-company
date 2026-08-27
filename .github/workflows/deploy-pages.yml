@@ -52,6 +52,8 @@ jobs:
           cp -r content-agency/. _site/content-agency/
           cp -r cafe-trade-area/input _site/cafe-trade-area/input
           cp -r cafe-trade-area/consult _site/cafe-trade-area/consult
+          # 두 화면이 함께 쓰는 스타일. 빠지면 양쪽 다 스타일 없이 뜬다
+          cp -r cafe-trade-area/shared _site/cafe-trade-area/shared
           cp cafe-trade-area/index.html cafe-trade-area/README.md cafe-trade-area/QUICKSTART.md _site/cafe-trade-area/
           cp .github/pages/심의콘솔-안내.html _site/cafe-trade-area/app/index.html
           # 심의 콘솔 자산이 섞여 들어갔는지 확인 — 섞이면 배포를 중단한다
@@ -62,6 +64,7 @@ jobs:
           test -s _site/index.html || { echo "회사 메인(index.html)이 없습니다"; exit 1; }
           test -s _site/cafe-trade-area/input/index.html || { echo "데이터 입력 페이지가 없습니다"; exit 1; }
           test -s _site/cafe-trade-area/consult/index.html || { echo "상담 페이지가 없습니다"; exit 1; }
+          test -s _site/cafe-trade-area/shared/base.css || { echo "공통 스타일이 없습니다"; exit 1; }
           # 상담 페이지는 개인정보를 다룬다 — 어떤 형태로든 외부 전송 코드가 섞이면 배포를 중단한다
           if grep -rqE 'fetch\(|XMLHttpRequest|sendBeacon|WebSocket' _site/cafe-trade-area/consult/; then
             echo "상담 페이지에 외부 전송 코드가 있습니다"; exit 1
