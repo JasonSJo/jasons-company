@@ -2,7 +2,7 @@
 
 `automation/` 의 파이썬 도구들과 `ops/` 의 영업 흐름을 **브라우저 한 화면**으로 묶은 운영 콘솔입니다.
 빌드 도구·서버·계정이 필요 없습니다. `app/index.html` 을 더블클릭하거나, 배포된
-`https://jasonsjo.github.io/jasons-company/app/` 로 접속하면 바로 동작합니다.
+`https://jasonsjo.github.io/jasons-company/content-agency/app/` 로 접속하면 바로 동작합니다.
 
 ## 무엇을 하나
 

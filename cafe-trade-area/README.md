@@ -28,6 +28,7 @@ M1 상권 획정 → M2 수요 변수 → M3 경쟁 배분 → M4 매출 추정
 ```
 cafe-trade-area/
 ├── index.html                소개 페이지
+├── input/                    ★ 데이터 입력 웹앱 — 후보지 실사 결과 → 후보지 CSV (공개)
 ├── QUICKSTART.md             ★ 실행 순서
 ├── analysis/                 파이프라인
 │   ├── config.py             ★ 계수 레지스트리 — 검증 상태(MEASURED/ESTIMATED)까지 관리

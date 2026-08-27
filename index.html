@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Jason's Company</title>
+<meta name="description" content="업종을 아는 팀이 콘텐츠를 만들고, 상권을 숫자로 읽어 점포를 심의합니다. 콘텐츠 대행과 상권분석 두 갈래로 운영합니다."/>
+<meta name="color-scheme" content="dark"/>
+<meta property="og:title" content="Jason's Company"/>
+<meta property="og:description" content="업종 전문 콘텐츠 대행 · 점포개발 상권분석"/>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%2312141b'/%3E%3Cpath d='M8 9h16M8 16h16M8 23h10' stroke='%23c9a44c' stroke-width='2' stroke-linecap='square'/%3E%3C/svg%3E"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Hahmlet:wght@300;500;700;900&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+KR:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+<style>
+/* ═══════════════════════════════════════════════════════════════
+   놋쇠 명판 — 깊은 잉크 바탕에 각인된 회사 안내판.
+   두 하위 사이트(밝은 청색 SaaS / 종이 도면)는 이 어두운 현관에서
+   갈라져 나가는 두 개의 밝은 방이다. 어느 쪽도 흉내내지 않는다.
+   ═══════════════════════════════════════════════════════════════ */
+:root{
+  --ink:#12141b;          /* 그라운드 — 푸른기가 도는 먹 */
+  --ink-2:#171a23;        /* 카드 */
+  --ink-3:#1e2230;        /* 카드 hover */
+  --rule:#2b3040;         /* 괘선 */
+  --paper:#ece7dc;        /* 본문 — 따뜻한 종이색 */
+  --paper-soft:#a8a294;
+  --paper-mute:#6e6a5f;
+  --brass:#c9a44c;        /* 각인 — 놋쇠 */
+  --brass-dim:#8d7233;
+  --lead:#7f93b8;         /* 콘텐츠하다 쪽 실마리(청색 계열) */
+  --sienna:#b4552c;       /* 상권분석 쪽 실마리(시에나 계열) */
+  --maxw:980px;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0; min-height:100vh; background:var(--ink); color:var(--paper);
+  font-family:'IBM Plex Sans KR','Pretendard',-apple-system,'Malgun Gothic',sans-serif;
+  font-weight:300; line-height:1.7; letter-spacing:-.01em;
+  -webkit-font-smoothing:antialiased;
+  /* 종이 그레인 — 평면 먹색이 인쇄물처럼 앉게 한다 */
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='260' height='260'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='260' height='260' filter='url(%23n)' opacity='.05'/%3E%3C/svg%3E");
+}
+a{color:inherit;text-decoration:none}
+:focus-visible{outline:2px solid var(--brass);outline-offset:3px}
+.wrap{max-width:var(--maxw);margin:0 auto;padding:0 28px}
+
+/* ── 각인 헤더 ─────────────────────────────── */
+header{padding:74px 0 0}
+.plate{position:relative}
+.eyebrow{
+  font-family:'IBM Plex Mono',monospace;font-size:10.5px;font-weight:500;
+  letter-spacing:.36em;text-transform:uppercase;color:var(--brass-dim);
+  display:flex;align-items:center;gap:14px;margin-bottom:26px;
+}
+.eyebrow::after{content:'';flex:1;height:1px;background:linear-gradient(90deg,var(--brass-dim),transparent)}
+h1{
+  margin:0;font-family:'Hahmlet',serif;font-weight:300;
+  font-size:clamp(46px,9.2vw,104px);line-height:.92;letter-spacing:-.045em;
+  text-wrap:balance;
+}
+h1 em{
+  font-style:normal;font-weight:900;color:var(--brass);
+  /* 각인 느낌 — 위쪽 어두운 선, 아래쪽 밝은 선 */
+  text-shadow:0 1px 0 rgba(0,0,0,.55), 0 -1px 0 rgba(255,235,190,.16);
+}
+.tagline{
+  margin:30px 0 0;max-width:44ch;font-size:16.5px;color:var(--paper-soft);line-height:1.8;
+}
+.tagline b{color:var(--paper);font-weight:500}
+
+/* 괘선 — 명판 아래를 가로지르는 놋쇠 실 */
+.thread{
+  margin:52px 0 0;height:1px;
+  background:linear-gradient(90deg,var(--brass) 0%,var(--brass-dim) 18%,var(--rule) 46%,var(--rule) 100%);
+}
+
+/* ── 두 갈래 ─────────────────────────────── */
+main{padding:0 0 96px}
+.ways{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--rule);
+  border:1px solid var(--rule);border-top:0}
+@media(max-width:760px){.ways{grid-template-columns:1fr}}
+.way{
+  background:var(--ink-2);padding:38px 34px 34px;display:flex;flex-direction:column;
+  min-height:290px;position:relative;transition:background .28s ease;
+}
+.way:hover,.way:focus-within{background:var(--ink-3)}
+/* 실마리 — 카드 상단에 사업별 색 한 줄 */
+.way::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:2px;
+  background:var(--accent);transform:scaleX(0);transform-origin:left;
+  transition:transform .38s cubic-bezier(.2,.7,.3,1);
+}
+.way:hover::before,.way:focus-within::before{transform:scaleX(1)}
+.way.content{--accent:var(--lead)}
+.way.trade{--accent:var(--sienna)}
+.way .kind{
+  font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.22em;
+  text-transform:uppercase;color:var(--accent);margin-bottom:16px;
+}
+.way h2{
+  margin:0 0 10px;font-family:'Hahmlet',serif;font-weight:700;
+  font-size:26px;letter-spacing:-.025em;line-height:1.25;
+}
+.way p{margin:0;font-size:14.5px;color:var(--paper-soft);line-height:1.75}
+.way .tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:16px}
+.way .tags span{
+  font-size:11.5px;color:var(--paper-mute);border:1px solid var(--rule);
+  padding:2px 9px;white-space:nowrap;
+}
+.way .go{
+  margin-top:auto;padding-top:24px;display:inline-flex;align-items:center;gap:9px;
+  font-family:'IBM Plex Mono',monospace;font-size:12px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--paper);
+}
+.way .go .ar{transition:transform .3s cubic-bezier(.2,.7,.3,1);color:var(--accent)}
+.way:hover .go .ar,.way:focus-within .go .ar{transform:translateX(7px)}
+/* 카드 전체를 링크 영역으로 */
+.way .cover{position:absolute;inset:0}
+
+/* ── 도구 ─────────────────────────────── */
+.tools{border:1px solid var(--rule);border-top:0;background:var(--ink-2)}
+.tools h3{
+  margin:0;padding:20px 34px 0;font-family:'IBM Plex Mono',monospace;
+  font-size:10px;letter-spacing:.22em;text-transform:uppercase;
+  color:var(--paper-mute);font-weight:500;
+}
+.tools ul{list-style:none;margin:0;padding:14px 0 8px}
+.tools li{border-top:1px solid var(--rule)}
+.tools li:first-child{border-top:0}
+.tools a{
+  display:flex;align-items:baseline;gap:16px;padding:15px 34px;flex-wrap:wrap;
+  transition:background .2s ease,padding-left .28s cubic-bezier(.2,.7,.3,1);
+}
+.tools a:hover{background:var(--ink-3);padding-left:41px}
+.tools .nm{font-size:15px;font-weight:400;color:var(--paper)}
+.tools .ds{font-size:13px;color:var(--paper-mute);flex:1 1 220px}
+.tools .pt{font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--brass-dim)}
+
+/* ── 발신 ─────────────────────────────── */
+footer{border-top:1px solid var(--rule);padding:34px 0 60px}
+.foot{display:flex;justify-content:space-between;gap:26px;flex-wrap:wrap;align-items:flex-start}
+.foot .who{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--paper-mute)}
+.contact{display:flex;gap:26px;flex-wrap:wrap;font-size:14px}
+.contact a{color:var(--paper-soft);border-bottom:1px solid var(--rule);padding-bottom:2px;
+  transition:color .2s,border-color .2s}
+.contact a:hover{color:var(--brass);border-bottom-color:var(--brass-dim)}
+
+/* ── 등장 ─────────────────────────────── */
+@media(prefers-reduced-motion:no-preference){
+  .rise{animation:rise .82s cubic-bezier(.2,.75,.25,1) backwards}
+  .rise:nth-of-type(1){animation-delay:.04s}
+  header .eyebrow{animation:rise .7s cubic-bezier(.2,.75,.25,1) backwards}
+  header h1{animation:rise .9s cubic-bezier(.2,.75,.25,1) .08s backwards}
+  header .tagline{animation:rise .9s cubic-bezier(.2,.75,.25,1) .18s backwards}
+  .thread{animation:thread 1.1s cubic-bezier(.3,.8,.3,1) .3s backwards}
+  .ways .way:nth-child(1){animation:rise .8s cubic-bezier(.2,.75,.25,1) .34s backwards}
+  .ways .way:nth-child(2){animation:rise .8s cubic-bezier(.2,.75,.25,1) .42s backwards}
+  .tools{animation:rise .8s cubic-bezier(.2,.75,.25,1) .5s backwards}
+}
+@keyframes rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+@keyframes thread{from{transform:scaleX(0);transform-origin:left}to{transform:scaleX(1)}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap plate">
+    <div class="eyebrow">Jason&rsquo;s Company</div>
+    <h1>업종을 알고,<br><em>상권을 읽는다</em></h1>
+    <p class="tagline">업종을 아는 팀이 <b>콘텐츠를 대신 만들고</b>,
+      상권을 숫자로 읽어 <b>점포 출점을 심의합니다.</b> 두 갈래로 운영합니다.</p>
+    <div class="thread"></div>
+  </div>
+</header>
+
+<main>
+  <div class="wrap">
+    <div class="ways">
+      <article class="way content">
+        <div class="kind">콘텐츠 대행</div>
+        <h2>콘텐츠하다</h2>
+        <p>요식업·병의원·뷰티·전문서비스. 업종별 전담 에디터가 블로그·인스타·릴스·
+          플레이스 리뷰까지 월 정액으로 운영합니다.</p>
+        <div class="tags"><span>업종 플레이북</span><span>생산 자동화</span><span>규제 검수</span></div>
+        <div class="go">서비스 보기 <span class="ar">→</span></div>
+        <a class="cover" href="content-agency/" aria-label="콘텐츠하다 — 업종 전문 콘텐츠 대행"></a>
+      </article>
+
+      <article class="way trade">
+        <div class="kind">상권분석 · 점포개발</div>
+        <h2>점포개발 심의</h2>
+        <p>등시선으로 상권을 획정하고 Huff 로 경쟁을 배분해 매출을 예측구간으로 추정한 뒤,
+          부결 트리거로 출점 여부를 심의합니다.</p>
+        <div class="tags"><span>M1~M6 모듈</span><span>예측구간</span><span>3단 판정</span></div>
+        <div class="go">알고리즘 보기 <span class="ar">→</span></div>
+        <a class="cover" href="cafe-trade-area/" aria-label="점포개발 심의 — 상권분석 알고리즘"></a>
+      </article>
+    </div>
+
+    <nav class="tools" aria-label="도구">
+      <h3>도구</h3>
+      <ul>
+        <li><a href="cafe-trade-area/input/">
+          <span class="nm">상권분석 데이터 입력</span>
+          <span class="ds">후보지 실사 결과를 입력해 분석용 CSV 로 내보냅니다</span>
+          <span class="pt">/cafe-trade-area/input/</span></a></li>
+        <li><a href="content-agency/app/">
+          <span class="nm">콘텐츠 운영 콘솔</span>
+          <span class="ds">타깃·콘텐츠 캘린더·검수·월간 리포트를 한 화면에서</span>
+          <span class="pt">/content-agency/app/</span></a></li>
+        <li><a href="https://github.com/JasonSJo/jasons-company">
+          <span class="nm">저장소</span>
+          <span class="ds">파이프라인 전체 소스와 테스트</span>
+          <span class="pt">github.com</span></a></li>
+      </ul>
+    </nav>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap foot">
+    <div class="who">Jason&rsquo;s Company</div>
+    <div class="contact">
+      <a href="https://open.kakao.com/o/sZ71xB5d">카카오톡 오픈채팅</a>
+      <a href="mailto:ceo-jason@jasons-consulting.com">ceo-jason@jasons-consulting.com</a>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>
