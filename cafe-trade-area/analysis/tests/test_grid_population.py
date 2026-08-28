@@ -611,5 +611,112 @@ class TestPlaceholderGuard(unittest.TestCase):
         self.assertIn("자리표시자", buf.getvalue())
 
 
+class TestKosisFind(unittest.TestCase):
+    """분류 코드를 외워 박지 않기 위한 것.
+
+    실제 응답을 받아 보니 A_1 은 '인구·가구' 가 아니라 **인구이동** 이었다. 그런
+    추측은 맞는지 확인할 방법이 없고, 틀려도 조용히 빈 결과만 돌아온다. 폴더를 따라
+    내려가며 표 이름을 보는 편이 확실하다.
+    """
+
+    def setUp(self):
+        self.원래 = urllib.request.urlopen
+        # 사용자가 실제로 받은 응답 모양 그대로 — 표 행과 폴더 행이 섞여 온다
+        self.트리 = {
+            "": [{"LIST_NM": "인구", "LIST_ID": "A"},
+                 {"LIST_NM": "사업·기업", "LIST_ID": "F"}],
+            "A": [{"LIST_NM": "인구이동", "LIST_ID": "A_1"},
+                  {"LIST_NM": "인구총조사", "LIST_ID": "A_2"}],
+            "A_1": [{"STAT_ID": "1976003", "TBL_ID": "DT_1B26001_A01", "ORG_ID": "101",
+                     "TBL_NM": "시군구별 이동자수", "VW_CD": "MT_ZTITLE"},
+                    {"LIST_NM": "전입사유별이동", "LIST_ID": "A_1_004",
+                     "VW_CD": "MT_ZTITLE"}],
+            "A_2": [{"TBL_ID": "DT_1JC1501", "ORG_ID": "101",
+                     "TBL_NM": "행정구역별 가구원수별 가구(일반가구)"}],
+            "F": [{"LIST_NM": "전국사업체조사", "LIST_ID": "F_29"}],
+            "F_29": [{"TBL_ID": "DT_1K52C01", "ORG_ID": "101",
+                      "TBL_NM": "행정구역별 사업체수 및 종사자수"}],
+        }
+
+        class R:
+            def __init__(s, b):
+                s._b = b.encode()
+                s.status = 200
+            def read(s):
+                return s._b
+            def __enter__(s):
+                return s
+            def __exit__(s, *a):
+                return False
+
+        self.호출 = []
+
+        def fake(url, timeout=None, context=None):
+            import urllib.parse as up
+            q = up.parse_qs(up.urlparse(url).query)
+            pid = q.get("parentListId", [""])[0]
+            self.호출.append(pid)
+            return R(json.dumps(self.트리.get(pid, []), ensure_ascii=False))
+
+        urllib.request.urlopen = fake
+
+    def tearDown(self):
+        urllib.request.urlopen = self.원래
+
+    def 실행(self, 낱말, **kw):
+        buf, old = io.StringIO(), sys.stdout
+        sys.stdout = buf
+        try:
+            rc = GP.kosis_find("KEY", 낱말, **kw)
+        finally:
+            sys.stdout = old
+        return rc, buf.getvalue()
+
+    def test_표와_폴더를_구분한다(self):
+        """TBL_ID 가 있으면 조회할 수 있는 표, LIST_ID 만 있으면 더 내려갈 폴더."""
+        표 = {"TBL_ID": "DT_1", "TBL_NM": "x"}
+        폴더 = {"LIST_ID": "A_1", "LIST_NM": "y"}
+        self.assertTrue(GP.is_table(표))
+        self.assertFalse(GP.is_folder(표))
+        self.assertTrue(GP.is_folder(폴더))
+        self.assertFalse(GP.is_table(폴더))
+
+    def test_트리를_내려가며_찾는다(self):
+        rc, 말 = self.실행(["가구", "종사자"])
+        self.assertEqual(rc, 0)
+        self.assertIn("DT_1JC1501", 말)
+        self.assertIn("DT_1K52C01", 말)
+        self.assertIn("ORG_ID=101", 말)
+
+    def test_어느_경로에서_나왔는지_적는다(self):
+        """같은 이름의 표가 여러 곳에 있어 경로가 없으면 고를 수 없다."""
+        rc, 말 = self.실행(["종사자"])
+        self.assertIn("사업·기업 > 전국사업체조사", 말)
+
+    def test_상관없는_표는_넣지_않는다(self):
+        rc, 말 = self.실행(["가구"])
+        self.assertNotIn("시군구별 이동자수", 말)
+
+    def test_호출_수에_상한이_있다(self):
+        """남의 API 를 넓이 우선으로 훑는 일이라 예의가 필요하다."""
+        rc, 말 = self.실행(["가구"], 최대호출=2)
+        self.assertLessEqual(len(self.호출), 2)
+
+    def test_못_찾으면_넓히라고_말한다(self):
+        rc, 말 = self.실행(["존재하지않는낱말"])
+        self.assertEqual(rc, 1)
+        self.assertIn("낱말을 넓혀", 말)
+
+    def test_낱말이_없으면_거절한다(self):
+        buf, old = io.StringIO(), sys.stderr
+        sys.stderr = buf
+        try:
+            rc = GP.kosis_find("KEY", [])
+        finally:
+            sys.stderr = old
+        self.assertEqual(rc, 2)
+        self.assertIn("--find", buf.getvalue())
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

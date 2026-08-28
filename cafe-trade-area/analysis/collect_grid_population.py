@@ -74,11 +74,22 @@ KOSIS_LIST_URL = "https://kosis.kr/openapi/statisticsList.do"
 KOSIS_DATA_URL = "https://kosis.kr/openapi/statisticsData.do"
 
 # 목록에서 훑어볼 분류. vwCd=MT_ZTITLE 는 주제별 목록이다.
+# ⚠ 분류 코드는 추측하지 않는다. 실제 응답을 보니 A_1 은 '인구·가구' 가 아니라
+#   '인구이동' 이었다. 코드를 외워 박는 대신 --find 로 트리를 훑어 찾는다.
 KOSIS_LIST_PROBES = [
-    ("주제별 최상위", {"vwCd": "MT_ZTITLE", "parentListId": "A"}),
-    ("인구·가구", {"vwCd": "MT_ZTITLE", "parentListId": "A_1"}),
-    ("사업체", {"vwCd": "MT_ZTITLE", "parentListId": "F_29"}),
+    ("주제별 최상위", {"vwCd": "MT_ZTITLE"}),
+    ("A 아래", {"vwCd": "MT_ZTITLE", "parentListId": "A"}),
 ]
+
+# 응답 한 줄은 둘 중 하나다. 이 구분이 트리 탐색의 전부다.
+#   통계표   TBL_ID 가 있다 → 실제로 조회할 수 있는 표
+#   하위목록 LIST_ID 만 있다 → 더 내려가야 하는 폴더
+def is_table(row: dict) -> bool:
+    return bool(str(row.get("TBL_ID", "")).strip())
+
+
+def is_folder(row: dict) -> bool:
+    return not is_table(row) and bool(str(row.get("LIST_ID", "")).strip())
 
 CANDIDATES = [
     ("가구(행정동)", "https://sgisapi.kostat.go.kr/OpenAPI3/stats/household.json",
@@ -455,6 +466,98 @@ def merge_cells(a: list[dict], b: list[dict]) -> list[dict]:
     return list(by.values())
 
 
+def kosis_list(api_key: str, params: dict) -> tuple[list, str]:
+    """통계표 목록 한 번 조회. 폴더와 표가 섞여 돌아온다."""
+    q = urllib.parse.urlencode({
+        "method": "getList", "apiKey": api_key,
+        "format": "json", "jsonVD": "Y", **params,
+    })
+    try:
+        with urllib.request.urlopen(f"{KOSIS_LIST_URL}?{q}", timeout=25,
+                                    context=ssl.create_default_context()) as r:
+            body = r.read().decode("utf-8", "replace")
+    except urllib.error.HTTPError as e:
+        return [], f"HTTP {e.code}"
+    except OSError as e:
+        return [], f"{type(e).__name__}: {e}"
+    try:
+        doc = json.loads(body)
+    except ValueError:
+        return [], f"JSON 이 아님: {body[:200]}"
+    if isinstance(doc, dict) and doc.get("errMsg"):
+        return [], f"{doc.get('err')} {doc.get('errMsg')}"
+    items = doc if isinstance(doc, list) else doc.get("result") or []
+    return [x for x in items if isinstance(x, dict)], ""
+
+
+def kosis_find(api_key: str, 낱말: list[str], vw_cd: str = "MT_ZTITLE",
+               root: str = "", 최대깊이: int = 4, 최대호출: int = 60) -> int:
+    """통계표 트리를 훑어 이름에 낱말이 든 표를 찾는다.
+
+    분류 코드를 외워 박지 않기 위해서다. 실제로 A_1 은 '인구·가구' 가 아니라
+    '인구이동' 이었고, 그런 추측은 맞는지 확인할 방법이 없다. 폴더(LIST_ID)를 따라
+    내려가며 표(TBL_ID) 이름을 보는 편이 확실하다.
+
+    호출 수에 상한을 둔다 — 남의 API 를 넓이 우선으로 훑는 일이라 예의가 필요하다.
+    """
+    if not api_key:
+        print("KOSIS_API_KEY 가 필요합니다.", file=sys.stderr)
+        return 2
+    낱말 = [w.strip() for w in 낱말 if w.strip()]
+    if not 낱말:
+        print("--find 에 찾을 낱말을 주십시오. 예: --find 세대 --find 종사자",
+              file=sys.stderr)
+        return 2
+
+    print(f"KOSIS 통계표 검색 — 낱말 {', '.join(낱말)} · 최대 {최대호출}회 호출")
+    큐 = [(root, [], 0)]
+    본폴더, 찾음, 호출 = set(), [], 0
+
+    while 큐 and 호출 < 최대호출:
+        parent, 길, depth = 큐.pop(0)
+        if parent in 본폴더 or depth > 최대깊이:
+            continue
+        본폴더.add(parent)
+        params = {"vwCd": vw_cd}
+        if parent:
+            params["parentListId"] = parent
+        rows, err = kosis_list(api_key, params)
+        호출 += 1
+        if err:
+            if depth == 0:
+                print(f"  ✕ 최상위 조회 실패 — {err}", file=sys.stderr)
+                return 1
+            continue
+
+        for r in rows:
+            이름 = str(r.get("TBL_NM") or r.get("LIST_NM") or "")
+            if is_table(r):
+                if any(w in 이름 for w in 낱말):
+                    찾음.append({"TBL_ID": r.get("TBL_ID"), "ORG_ID": r.get("ORG_ID"),
+                                "이름": 이름, "길": " > ".join(길)})
+            elif is_folder(r):
+                # 폴더는 이름이 맞거나, 아직 아무것도 못 찾았으면 들어가 본다
+                큐.append((str(r.get("LIST_ID")), 길 + [이름], depth + 1))
+
+    print(f"  호출 {호출}회 · 폴더 {len(본폴더)}곳 확인")
+    if not 찾음:
+        print("\n찾은 표가 없습니다. 낱말을 넓혀 보십시오(예: --find 가구, --find 사업체).")
+        print("  --최대호출 을 늘리면 더 깊이 훑습니다.")
+        return 1
+
+    print(f"\n찾은 통계표 {len(찾음)}개:")
+    for f in 찾음[:40]:
+        print(f"  ORG_ID={f['ORG_ID']} TBL_ID={f['TBL_ID']}")
+        print(f"    {f['이름']}")
+        if f["길"]:
+            print(f"    경로: {f['길']}")
+    if len(찾음) > 40:
+        print(f"  … 외 {len(찾음) - 40}개")
+    print("\n쓸 표를 골라 넣으십시오:")
+    print("  --tbl-id-household <세대수 표>  --tbl-id-worker <종사자수 표>")
+    return 0
+
+
 def kosis_probe(api_key: str) -> int:
     """KOSIS 통계표 목록을 훑는다.
 
@@ -663,6 +766,11 @@ def main(argv=None) -> int:
     ap.add_argument("--obj-l1", default="ALL", help="KOSIS 분류(행정구역) — 기본 전체")
     ap.add_argument("--prd-se", default="Y", help="수록주기 (Y=연간)")
     ap.add_argument("--prd-de", default="", help="기준시점 (비우면 최신 1건)")
+    ap.add_argument("--find", action="append", default=[],
+                    help="통계표 이름에서 찾을 낱말. 여러 번 줄 수 있다. "
+                         "예: --find 세대 --find 종사자")
+    ap.add_argument("--max-calls", type=int, default=60,
+                    help="--find 가 쓸 최대 호출 수 (남의 API 다)")
     ap.add_argument("--auth-url", default=AUTH_URL)
     ap.add_argument("--data-url", default=DATA_URL)
     ap.add_argument("--out", default=str(ROOT / "output" / "격자인구.csv"))
@@ -682,6 +790,10 @@ def main(argv=None) -> int:
 
     if args.make_areas:
         return make_areas(sites, Path(args.areas or (ROOT / "output" / "행정구역.csv")))
+
+    if args.find:
+        return kosis_find(os.environ.get("KOSIS_API_KEY", "").strip(),
+                          args.find, 최대호출=args.max_calls)
 
     if args.probe:
         if args.source == "kosis":
