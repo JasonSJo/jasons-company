@@ -87,6 +87,13 @@ CANDIDATES = [
      "none", "adm_cd 목록 — 좌표→코드 변환의 출발점"),
     ("창업 인구요약", "https://sgisapi.kostat.go.kr/OpenAPI3/startupbiz/pplsummary.json",
      "bbox", "격자/영역 인구 (형식 미확인)"),
+
+    # 경계 API — 이게 되면 --areas 표를 손으로 채우지 않아도 된다.
+    # 행정동·집계구 경계를 받으면 면적과 중심점이 도형에서 바로 나온다.
+    ("행정동 경계", "https://sgisapi.kostat.go.kr/OpenAPI3/boundary/hadmarea.geojson",
+     "boundary", "면적·중심점 → --areas 자동 생성"),
+    ("집계구 경계", "https://sgisapi.kostat.go.kr/OpenAPI3/boundary/jagurodarea.geojson",
+     "boundary", "집계구 경계 (가장 촘촘) → --areas 자동 생성"),
 ]
 
 # M2 가 먹는 격자인구.csv 열
@@ -298,6 +305,9 @@ def probe(key: str, secret: str, auth_url: str, adm_cd: str, year: str,
                       "maxx": box["maxx"], "maxy": box["maxy"]}
         elif kind == "bbox":
             params = {}
+        elif kind == "boundary":
+            # 경계는 연도와 행정구역 코드로 부르는 형태로 알려져 있다
+            params = {"year": year, "adm_cd": adm_cd, "low_search": "1"}
         else:
             params = {}
         got = _probe_one(token, url, params)
@@ -320,8 +330,10 @@ def probe(key: str, secret: str, auth_url: str, adm_cd: str, year: str,
     if 작동:
         print(f"응답한 엔드포인트: {', '.join(작동)}")
         print("이 출력을 그대로 전달해 주시면 FIELDS 와 DATA_URL 을 정확히 맞추겠습니다.")
-        print("특히 볼 것: 세대수(household_cnt)와 직장인구(종사자수)에 해당하는 "
-              "필드명, 그리고 좌표나 격자 단위가 있는지.")
+        print("특히 볼 것:")
+        print("  · 세대수(household_cnt)와 직장인구(종사자수)에 해당하는 필드명")
+        print("  · 좌표나 격자 단위가 있는지 — 있으면 시군구 안분 문제가 사라진다")
+        print("  · **경계**가 응답하는지 — 되면 --areas 표를 손으로 채우지 않아도 된다")
     else:
         print("응답한 엔드포인트가 없습니다. 인증은 됐으므로 키 문제는 아니고, "
               "주소나 파라미터가 다릅니다.")

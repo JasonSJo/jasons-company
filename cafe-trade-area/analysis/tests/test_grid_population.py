@@ -227,6 +227,14 @@ class TestConfirmedEndpoints(unittest.TestCase):
         self.assertIn("household", urls)
         self.assertIn("company", urls)
 
+    def test_경계도_눌러_본다(self):
+        """경계가 응답하면 --areas 표(면적·중심점)를 손으로 채우지 않아도 된다.
+        지금은 그 표를 사람이 만들어야 하는 것이 가장 큰 손작업이다."""
+        kinds = {k for _, _, k, _ in GP.CANDIDATES}
+        self.assertIn("boundary", kinds)
+        urls = " ".join(u for _, u, _, _ in GP.CANDIDATES)
+        self.assertIn("boundary", urls)
+
 
 class TestCoarseCellWarning(unittest.TestCase):
     """무료로 열린 전국 인구 자료(SGIS 통계·KOSIS)는 대부분 행정구역 단위다.
