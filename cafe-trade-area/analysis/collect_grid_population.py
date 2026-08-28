@@ -50,7 +50,11 @@ from common import read_csv, to_f
 
 ROOT = Path(__file__).resolve().parent
 
-# 인증은 문서로 확인했다: consumer_key/secret → result.accessToken
+# 인증은 **실제 호출로 확인했다.** 응답은 이렇게 온다:
+#   {"result":{"accessToken":"<UUID>","accessTimeout":"<ms epoch>"},
+#    "errCd":0,"errMsg":"Success","id":"API_0101","trId":"..."}
+# 토큰 수명은 4시간(accessTimeout - 발급시각). 한 번 실행이 그보다 길 일은 없지만,
+# 오래 걸리는 배치를 돌린다면 재발급이 필요하다.
 #
 # ⚠ 통계청이 국가데이터처로 개편되면서 개발지원센터 주소가 sgis.kostat.go.kr →
 #   sgis.mods.go.kr 로 옮겨 갔다. API 호스트도 함께 바뀌었을 수 있어 두 곳을 다
@@ -170,6 +174,9 @@ def get_token(key: str, secret: str, url: str = AUTH_URL) -> tuple[str, str]:
         return "", f"HTTP {e.code}"
     except (OSError, ValueError) as e:
         return "", f"{type(e).__name__}: {e}"
+    # 오류도 HTTP 200 으로 온다. errMsg 를 그대로 전하는 편이 원인을 빨리 짚는다.
+    if str(doc.get("errCd", "0")) not in ("0", "None", ""):
+        return "", f"errCd {doc.get('errCd')} {doc.get('errMsg', '')}"
     tok = ((doc.get("result") or {}).get("accessToken") or "").strip()
     if not tok:
         return "", f"토큰이 없습니다: {json.dumps(doc, ensure_ascii=False)[:300]}"

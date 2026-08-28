@@ -235,6 +235,64 @@ class TestProbe(unittest.TestCase):
         self.assertIn("개발지원센터", buf.getvalue())
 
 
+class TestRealAuthResponse(unittest.TestCase):
+    """실제 SGIS 인증 응답. 짐작이 아니라 받아 본 것이다.
+
+    문서를 이 환경에서 열 수 없어 형태를 확정하지 못하고 있었는데, 키를 발급받아
+    호출한 응답이 들어왔다. 그 모양을 그대로 박아 둔다 — 나중에 파서를 손댈 때
+    이것과 어긋나면 바로 알 수 있다.
+    """
+
+    실제 = {"result": {"accessToken": "f31ad90a-e9c4-431f-acd4-b1a8cca50963",
+                      "accessTimeout": "1787910189924"},
+           "errCd": 0, "errMsg": "Success", "id": "API_0101",
+           "trId": "sp*S_API_0101_1787895789922"}
+
+    def _가짜(self, doc):
+        원래 = urllib.request.urlopen
+
+        class R:
+            def __init__(s, b):
+                s._b = b.encode()
+                s.status = 200
+            def read(s):
+                return s._b
+            def __enter__(s):
+                return s
+            def __exit__(s, *a):
+                return False
+
+        urllib.request.urlopen = lambda url, timeout=None, context=None: R(
+            json.dumps(doc, ensure_ascii=False))
+        return 원래
+
+    def test_실제_응답에서_토큰을_읽는다(self):
+        원래 = self._가짜(self.실제)
+        try:
+            tok, err = GP.get_token("K", "S")
+        finally:
+            urllib.request.urlopen = 원래
+        self.assertEqual(err, "")
+        self.assertEqual(tok, "f31ad90a-e9c4-431f-acd4-b1a8cca50963")
+
+    def test_토큰_수명은_4시간이다(self):
+        """한 번 실행이 그보다 길 일은 없지만, 오래 걸리는 배치는 재발급이 필요하다."""
+        발급 = int(self.실제["trId"].rsplit("_", 1)[1])
+        만료 = int(self.실제["result"]["accessTimeout"])
+        self.assertAlmostEqual((만료 - 발급) / 1000 / 3600, 4.0, places=2)
+
+    def test_errCd_가_0이_아니면_그_말을_전한다(self):
+        """오류도 HTTP 200 으로 온다. errMsg 를 그대로 전해야 원인을 빨리 짚는다."""
+        원래 = self._가짜({"errCd": "-401", "errMsg": "인증키가 유효하지 않습니다",
+                        "result": {}})
+        try:
+            tok, err = GP.get_token("K", "S")
+        finally:
+            urllib.request.urlopen = 원래
+        self.assertEqual(tok, "")
+        self.assertIn("인증키가 유효하지 않습니다", err)
+
+
 class TestConfirmedEndpoints(unittest.TestCase):
     def test_인증_주소는_문서로_확인한_것이다(self):
         self.assertEqual(
