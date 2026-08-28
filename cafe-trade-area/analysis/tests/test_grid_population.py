@@ -1300,3 +1300,133 @@ class TestAddressSplit(unittest.TestCase):
     def test_빈_주소는_빈_손으로_돌아온다(self):
         self.assertEqual(GP.주소쪼개기(""), ("", []))
         self.assertEqual(GP.주소쪼개기("서울"), ("서울", []))
+
+
+class TestMakeAreasLive(unittest.TestCase):
+    """--areas 표를 SGIS 경계에서 채워 낸다.
+
+    이 표는 격자인구(H·W)와 통신사 유동인구(D_am)가 **같이** 쓴다. 지금까지 유동인구
+    쪽은 이 표를 사람이 채워야 했고, 그게 전국으로 갈 때 남은 마지막 손작업이었다.
+    """
+
+    def setUp(self):
+        import csv, os, tempfile
+        self.tmp = Path(tempfile.mkdtemp(prefix="areas-"))
+        self.원래 = urllib.request.urlopen
+        self.키 = dict(os.environ)
+        os.environ["SGIS_KEY"], os.environ["SGIS_SECRET"] = "K", "S"
+        self.부른것 = []
+
+        class R:
+            def __init__(s, b):
+                s._b = b.encode(); s.status = 200
+            def read(s): return s._b
+            def __enter__(s): return s
+            def __exit__(s, *a): return False
+
+        def 사각(x, y, 반, code, nm):
+            return {"type": "Feature", "geometry": {"type": "Polygon", "coordinates": [[
+                [x - 반, y - 반], [x + 반, y - 반], [x + 반, y + 반],
+                [x - 반, y + 반], [x - 반, y - 반]]]},
+                "properties": {"x": str(x), "y": str(y),
+                               "adm_cd": code, "adm_nm": nm}}
+
+        def fake(url, timeout=None, context=None):
+            self.부른것.append(url)
+            q = dict(p.split("=", 1) for p in url.split("?", 1)[1].split("&")
+                     if "=" in p)
+            if "auth" in url:
+                return R(json.dumps({"errCd": 0, "result": {"accessToken": "T"}}))
+            adm = q.get("adm_cd", "")
+            if "jagurodarea" in url:
+                # 집계구 — 훨씬 잘다
+                feats = [사각(959458 + i * 400, 1950284, 150,
+                            f"1104053{i:02d}", f"성동구 집계구{i}") for i in range(4)]
+                return R(json.dumps({"type": "FeatureCollection", "errCd": 0,
+                                     "features": feats}, ensure_ascii=False))
+            if "hadmarea" in url:
+                return R(json.dumps({"type": "FeatureCollection", "errCd": 0,
+                                     "features": [사각(959458, 1950284, 2000,
+                                                     "11040", "서울특별시 성동구")]},
+                                    ensure_ascii=False))
+            if adm == "11" and q.get("low_search") == "0":
+                return R(json.dumps({"errCd": 0, "result": [
+                    {"adm_cd": "11", "adm_nm": "서울특별시"}]}, ensure_ascii=False))
+            if adm == "11":
+                return R(json.dumps({"errCd": 0, "result": [
+                    {"adm_cd": "11040", "adm_nm": "성동구",
+                     "household_cnt": "123124"}]}, ensure_ascii=False))
+            return R(json.dumps({"errCd": "-100", "errMsg": "없는 코드"},
+                                ensure_ascii=False))
+
+        urllib.request.urlopen = fake
+        self.sites = self.tmp / "sites.csv"
+        with self.sites.open("w", encoding="utf-8-sig", newline="") as f:
+            w = csv.DictWriter(f, fieldnames=["후보지명", "주소", "법정동코드"])
+            w.writeheader()
+            w.writerow({"후보지명": "왕십리", "주소": "서울 성동구 왕십리로 222",
+                        "법정동코드": "1120010800"})
+
+    def tearDown(self):
+        import os
+        urllib.request.urlopen = self.원래
+        os.environ.clear(); os.environ.update(self.키)
+
+    def 실행(self, extra=()):
+        out = self.tmp / "행정구역.csv"
+        buf, old = io.StringIO(), sys.stdout
+        sys.stdout = buf
+        try:
+            rc = GP.main(["--make-areas", "--sites", str(self.sites),
+                          "--areas", str(out)] + list(extra))
+        finally:
+            sys.stdout = old
+        return rc, out, buf.getvalue()
+
+    def test_라이브면_면적과_좌표까지_채운다(self):
+        rc, out, 말 = self.실행(["--live"])
+        self.assertEqual(rc, 0, 말)
+        r = read_csv(out)[0]
+        self.assertEqual(r["구역코드"], "11040")
+        self.assertAlmostEqual(float(r["면적_m2"]), 4000.0 ** 2, delta=1)
+        self.assertAlmostEqual(float(r["위도"]), 37.551, places=2)
+        self.assertAlmostEqual(float(r["경도"]), 127.041, places=2)
+
+    def test_라이브가_아니면_비워_둔다(self):
+        """키 없이 부르면 지어내지 않는다. 뼈대만 낸다."""
+        rc, out, 말 = self.실행()
+        self.assertEqual(rc, 0, 말)
+        r = read_csv(out)[0]
+        self.assertEqual(r["면적_m2"], "")
+        self.assertEqual(r["위도"], "")
+
+    def test_만든_표를_두_도구가_같이_읽는다(self):
+        """유동인구(collect_carrier_flow)와 격자인구가 같은 load_areas 를 쓴다."""
+        import collect_carrier_flow as CF
+        rc, out, 말 = self.실행(["--live"])
+        areas = CF.load_areas(out)
+        self.assertIn("11040", areas)
+        self.assertGreater(areas["11040"]["면적_m2"], 0)
+        self.assertGreater(areas["11040"]["위도"], 37)
+
+    def test_집계구는_행정동보다_잘게_온다(self):
+        """유동인구에 쓸 표. P5(도보 5분)는 0.35km² 안팎이라 행정동은 대부분 버려진다."""
+        rc, 잔것, 말 = self.실행(["--live", "--level", "집계구"])
+        self.assertEqual(rc, 0, 말)
+        self.assertTrue(any("jagurodarea" in u for u in self.부른것), self.부른것)
+        rows = read_csv(잔것)
+        self.assertEqual(len(rows), 4)
+        for r in rows:
+            self.assertLess(float(r["면적_m2"]), 350_000)
+
+    def test_행정동_표에는_집계구를_권한다(self):
+        """유동인구에 그대로 쓰면 대부분 버려지는데, 그걸 말해 주지 않으면
+        '유동이 없는 자리' 로 읽힌다."""
+        rc, out, 말 = self.실행(["--live"])
+        self.assertIn("집계구", 말)
+        self.assertIn("P5", 말)
+
+    def test_확인되지_않은_단계는_그렇다고_말한다(self):
+        """집계구 경계 주소는 실제 호출로 확인하지 못했다. 되는 척하지 않는다."""
+        self.assertEqual(GP.BOUNDARY["집계구"][1], "미확인")
+        self.assertEqual(GP.BOUNDARY["행정동"][1].split()[0], "확인됨")

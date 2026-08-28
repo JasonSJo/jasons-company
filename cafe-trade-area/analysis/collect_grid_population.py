@@ -521,6 +521,16 @@ def geom_area_m2(geom: dict) -> float:
     return max(0.0, tot)
 
 
+# 경계는 단계별로 있다. 유동인구 쪽은 **집계구**를 써야 한다 — 행정동은 1~3km² 인데
+# P5(도보 5분)는 0.35km² 안팎이라 중심점이 P5 안에 드는 행정동이 거의 없다.
+# ⚠ 실제 호출로 확인한 것은 hadmarea 뿐이다. 나머지는 --probe 로 눌러 보고 쓰십시오.
+BOUNDARY = {
+    "시군구": ("/OpenAPI3/boundary/hadmarea.geojson", "확인됨"),
+    "행정동": ("/OpenAPI3/boundary/hadmarea.geojson", "확인됨 (low_search 로 내려간다)"),
+    "집계구": ("/OpenAPI3/boundary/jagurodarea.geojson", "미확인"),
+}
+
+
 def fetch_boundary(token: str, base: str, adm_cd: str, year: str,
                    low_search: str = "0",
                    path: str = "/OpenAPI3/boundary/hadmarea.geojson"
@@ -1158,6 +1168,77 @@ def make_areas(sites: list[dict], out: Path) -> int:
     return 0
 
 
+def make_areas_live(args, sites: list[dict], out: Path) -> int:
+    """SGIS 경계에서 --areas 표를 실제로 채워 낸다.
+
+    이 표는 **두 도구가 같이 쓴다.** 통신사 유동인구(collect_carrier_flow.py)도 구역
+    면적이 없으면 행을 만들지 않는데, 지금까지 그 표를 사람이 채워야 했다. 격자인구
+    쪽에서 이미 경계를 받고 있으므로 여기서 한 번 만들면 양쪽이 끝난다.
+
+    유동인구에는 --level 집계구 를 쓰십시오. 행정동은 1~3km² 인데 P5(도보 5분)는
+    0.35km² 안팎이라, 중심점이 P5 안에 드는 행정동이 거의 없어 대부분 버려집니다.
+    """
+    key = os.environ.get("SGIS_KEY", "").strip()
+    secret = os.environ.get("SGIS_SECRET", "").strip()
+    if not (key and secret):
+        print("SGIS_KEY / SGIS_SECRET 이 필요합니다.", file=sys.stderr)
+        return 2
+
+    후보 = [args.auth_url] + [h + AUTH_PATH for h in SGIS_HOSTS
+                            if h + AUTH_PATH != args.auth_url]
+    token, 베이스, err = "", "", ""
+    for one in 후보:
+        token, err = get_token(key, secret, one)
+        if token:
+            베이스 = one.split("/OpenAPI3")[0]
+            break
+    if not token:
+        print(f"토큰 발급 실패 — {err}", file=sys.stderr)
+        return 1
+
+    지역, 문제 = resolve_regions(token, 베이스, args.year, sites)
+    for m in 문제:
+        print(f"  🙋 {m}", file=sys.stderr)
+    if not 지역:
+        print("후보지를 SGIS 행정구역코드로 옮기지 못했습니다.", file=sys.stderr)
+        return 1
+
+    path, 확인 = BOUNDARY.get(args.level, BOUNDARY["행정동"])
+    low = "1" if args.level in ("행정동", "집계구") else "0"
+    print(f"경계 {args.level} ({확인}) — {path}")
+    모은것 = {}
+    for z in 지역:
+        feats, err = fetch_boundary(token, 베이스, z["adm_cd"], args.year, low, path)
+        if err:
+            print(f"  ✕ {z['adm_nm']} ({z['adm_cd']}) — {err}", file=sys.stderr)
+            continue
+        got, 빠진 = areas_from_boundary(feats)
+        모은것.update(got)
+        print(f"  ✓ {z['adm_nm']} — 구역 {len(got)}개")
+        for m in 빠진:
+            print(f"      {m}", file=sys.stderr)
+
+    if not 모은것:
+        print("경계를 하나도 받지 못했습니다.", file=sys.stderr)
+        if 확인 == "미확인":
+            print(f"  {args.level} 경계 주소는 아직 확인되지 않았습니다. "
+                  f"--probe 로 눌러 보십시오.", file=sys.stderr)
+        return 1
+
+    write_areas(모은것, out)
+    큰것 = [a for a in 모은것.values() if a["면적_m2"] > 300 * 300]
+    print(f"\n구역 {len(모은것)}개 → {out}")
+    print("  이 표는 격자인구와 통신사 유동인구 양쪽에서 같이 씁니다.")
+    if 큰것:
+        평균 = sum(a["면적_m2"] for a in 큰것) / len(큰것) / 1e6
+        print(f"  🙋 {len(큰것)}개 구역이 한 변 300m 를 넘습니다 (평균 {평균:.2f}km²). "
+              f"M2 가 안분 경고를 냅니다.")
+        if args.level != "집계구":
+            print("     유동인구에 쓸 표라면 --level 집계구 로 더 잘게 받으십시오 — "
+                  "P5(도보 5분)는 0.35km² 안팎이라 행정동은 대부분 버려집니다.")
+    return 0
+
+
 def kosis_run(args, out: Path) -> int:
     """KOSIS 에서 세대수·종사자수를 받아 격자인구.csv 를 만든다."""
     api_key = os.environ.get("KOSIS_API_KEY", "").strip()
@@ -1248,7 +1329,12 @@ def main(argv=None) -> int:
     # KOSIS 조회 — probe 로 표를 고른 뒤 여기에 넣는다. 코드를 고칠 필요가 없다.
     ap.add_argument("--areas", help="구역코드→면적·중심점 표 (CSV). KOSIS 조회에 필요하다")
     ap.add_argument("--make-areas", action="store_true",
-                    help="후보지에 필요한 구역코드만 골라 --areas 표의 뼈대를 만든다")
+                    help="--areas 표를 만든다. --live 를 함께 주면 SGIS 경계에서 "
+                         "면적·중심점까지 채우고, 없으면 뼈대만 만든다")
+    ap.add_argument("--level", default="행정동",
+                    choices=tuple(BOUNDARY),
+                    help="--make-areas --live 에서 받을 경계 단계. 유동인구에 쓸 "
+                         "표라면 집계구 (기본 행정동)")
     ap.add_argument("--org-id", default="101", help="KOSIS 기관코드 (통계청=101)")
     ap.add_argument("--tbl-id-household", default="", help="세대수 통계표 ID")
     ap.add_argument("--tbl-id-worker", default="", help="종사자수 통계표 ID")
@@ -1280,7 +1366,10 @@ def main(argv=None) -> int:
     secret = os.environ.get("SGIS_SECRET", "").strip()
 
     if args.make_areas:
-        return make_areas(sites, Path(args.areas or (ROOT / "output" / "행정구역.csv")))
+        표 = Path(args.areas or (ROOT / "output" / "행정구역.csv"))
+        if args.live:
+            return make_areas_live(args, sites, 표)
+        return make_areas(sites, 표)
 
     if args.find:
         return kosis_find(os.environ.get("KOSIS_API_KEY", "").strip(),
