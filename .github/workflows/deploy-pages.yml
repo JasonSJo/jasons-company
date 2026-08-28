@@ -74,6 +74,12 @@ jobs:
           # CNAME 을 만들지 않는다. 도메인을 붙일 때 무엇을 해야 하는지는 DOMAIN.md 에 적어 뒀다.
           # (여기서 CNAME 을 미리 만들면 회사 사이트가 통째로 그 도메인으로 옮겨간다.)
           test -f .github/pages/DOMAIN.md || { echo "도메인 이전 절차 문서가 없습니다"; exit 1; }
+          # 알고리즘 내부 설명은 백엔드 문서다 — 공개 서비스 사이트에 올리지 않는다.
+          # docs/ 를 복사하지 않으므로 지금은 새어 나갈 길이 없지만, 나중에 누군가
+          # cp -r cafe-trade-area/. 로 바꾸면 조용히 딸려 나간다. 그때 여기서 멈춘다.
+          if find _site -name '알고리즘.html' | grep -q .; then
+            echo "알고리즘 문서가 배포 산출물에 있습니다 — 백엔드 문서입니다"; exit 1
+          fi
       - name: Upload site
         uses: actions/upload-pages-artifact@v3
         with:
