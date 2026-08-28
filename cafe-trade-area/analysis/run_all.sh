@@ -46,9 +46,20 @@ echo -e "\n[2/5] M3 경쟁점"
 "$PY" collect_competitors.py --sites "$SITES" --stores "$STORES" $LIVE
 
 echo
+echo "── 배후 인구 H·W (통계청 SGIS · 전국 · 등록 데이터) ──"
+"$PY" collect_grid_population.py --sites "$SITES" $LIVE || \
+  echo "  ! 격자 인구 수집을 건너뜁니다 — 준비해 둔 격자인구.csv 를 씁니다."
+
+echo
 echo "── 유동인구 대용 (서울 상권분석 · 실측 아님) ──"
 "$PY" collect_foot_traffic.py --sites "$SITES" $LIVE || \
   echo "  ! 유동인구 대용 수집을 건너뜁니다 — 심의는 계속 진행됩니다."
+
+echo
+echo "── 유동인구 커버리지 (전국: 빠진 후보지가 있으면 알려 준다) ──"
+# 막지는 않는다(--strict 없음). 다만 자료가 없는 후보지는 D_am 이 0 이 되고 S 가
+# 바닥에 깔리므로, 심의표를 읽기 전에 그 사실을 알고 있어야 한다.
+"$PY" collect_carrier_flow.py --coverage --sites "$SITES" || true
 
 echo
 echo "── 브랜드 매출 벤치마크 (공정위 공시 · 연 1회면 충분) ──"
@@ -56,7 +67,7 @@ echo "── 브랜드 매출 벤치마크 (공정위 공시 · 연 1회면 충�
   echo "  ! 벤치마크 수집을 건너뜁니다 — 심의는 계속 진행됩니다."
 
 echo
-echo "── 실거래가 (M5 시세 대조 근거 · 매출 추정에는 미사용) ──"
+echo "── 실거래가 (심의표 참고 · 판정에도 매출 추정에도 미사용) ──"
 "$PY" collect_transactions.py --sites "$SITES" $LIVE || \
   echo "  ! 실거래가 수집을 건너뜁니다 — 심의는 계속 진행됩니다."
 
