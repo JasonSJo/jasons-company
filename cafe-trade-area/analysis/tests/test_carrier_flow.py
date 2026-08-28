@@ -189,8 +189,132 @@ class TestProviderTable(unittest.TestCase):
         self.assertEqual(CF.PROVIDERS["seoul-living"]["받는법"], "API")
         self.assertEqual(CF.PROVIDERS["seoul-living"]["비용"], "무료")
 
+    def test_무료_공급자는_전국이_아니다(self):
+        """전국을 시간대별로 덮는 무료 공개 API 는 없다. 있는 것처럼 적으면
+        계약 없이 전국이 커버된다고 착각하게 된다."""
+        for k, p in CF.PROVIDERS.items():
+            if p["비용"].startswith("무료") and p["받는법"] == "API":
+                self.assertNotEqual(p["범위"], "전국", k)
+
+    def test_전국을_덮는_것은_계약형이다(self):
+        전국 = [k for k, p in CF.PROVIDERS.items() if p["범위"].startswith("전국")
+              and p["받는법"] == "반입"]
+        self.assertTrue(전국, "전국 공급자가 하나도 없습니다")
+        for k in 전국:
+            self.assertIn("계약", CF.PROVIDERS[k]["비용"], k)
+
+    def test_통신사_셋이_전국_경로를_가진다(self):
+        """어느 통신사와 계약하든 붙일 자리가 있어야 한다."""
+        전국통신사 = {p["통신사"] for p in CF.PROVIDERS.values()
+                  if p["범위"].startswith("전국")}
+        for x in ("KT", "SKT", "LG U+"):
+            self.assertIn(x, 전국통신사, x)
+
     def test_목록에_실측이_아니라는_말이_있다(self):
         self.assertIn("실측이 아닙니다", CF.목록())
+
+
+class TestNationwide(unittest.TestCase):
+    """전국은 지역별 파일 여러 개로 온다. 합치는 과정에서 나는 사고를 막는다."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="carrier-nat-"))
+        self.areas = write_csv(self.tmp / "areas.csv", AREAS + [
+            {"구역코드": "4113510300101", "면적_m2": "60000",
+             "위도": "37.3595", "경도": "127.1052"},   # 성남
+            {"구역코드": "2617010100101", "면적_m2": "55000",
+             "위도": "35.1578", "경도": "129.0596"},   # 부산
+        ])
+
+    def test_여러_지역_파일을_한_벌로_합친다(self):
+        a = write_csv(self.tmp / "seoul.csv",
+                      [{"집계구_코드": "1120058010001", "시간대구분": "08", "총생활인구수": "412"}])
+        b = write_csv(self.tmp / "busan.csv",
+                      [{"집계구_코드": "2617010100101", "시간대구분": "08", "총생활인구수": "301"}])
+        out = self.tmp / "out.csv"
+        rc = CF.main(["--import", str(a), "--import", str(b), "--provider", "kt-plip",
+                      "--areas", str(self.areas), "--out", str(out)])
+        self.assertEqual(rc, 0)
+        got = read_csv(out)
+        self.assertEqual(len(got), 2)
+        self.assertEqual({r["구역코드"] for r in got},
+                         {"1120058010001", "2617010100101"})
+
+    def test_겹친_구역을_두_번_더하지_않는다(self):
+        """지역별 파일이 경계에서 겹치거나 같은 달을 두 번 받는 일이 흔하다.
+        그대로 더하면 그 후보지만 D_am 이 배로 뛰어 근거 없이 좋아 보인다."""
+        row = {"집계구_코드": "1120058010001", "시간대구분": "08",
+               "총생활인구수": "412", "기준일자": "20260801"}
+        a = write_csv(self.tmp / "a.csv", [row])
+        b = write_csv(self.tmp / "b.csv", [dict(row)])
+        out = self.tmp / "out.csv"
+        CF.main(["--import", str(a), "--import", str(b), "--provider", "kt-plip",
+                 "--areas", str(self.areas), "--out", str(out)])
+        got = read_csv(out)
+        self.assertEqual(len(got), 1, "같은 구역이 두 번 들어갔습니다")
+
+    def test_같은_구역이라도_다른_시간대는_남긴다(self):
+        rows = [{"집계구_코드": "1120058010001", "시간대구분": "08", "총생활인구수": "412"},
+                {"집계구_코드": "1120058010001", "시간대구분": "", "총생활인구수": "9000"}]
+        src = write_csv(self.tmp / "c.csv", rows)
+        out = self.tmp / "out.csv"
+        CF.main(["--import", str(src), "--provider", "kt-plip",
+                 "--areas", str(self.areas), "--out", str(out)])
+        got = read_csv(out)
+        self.assertEqual({r["시간대"] for r in got}, {M2.AM, M2.ALL})
+
+
+class TestCoverage(unittest.TestCase):
+    """전국을 다루면 커버리지가 반드시 듬성듬성해진다. 그 사실을 심의 전에 말한다."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="carrier-cov-"))
+        self.sites = write_csv(self.tmp / "sites.csv", [
+            {"후보지명": "성수 연무장길", "위도": "37.5445", "경도": "127.0557"},
+            {"후보지명": "부산 서면", "위도": "35.1578", "경도": "129.0596"},
+        ])
+        self.flow = write_csv(self.tmp / "flow.csv", [{
+            "지점ID": "x", "위도": "37.5445", "경도": "127.0557", "도로변": "",
+            "시간대": M2.AM, "인원": "412", "출처": "KT PLIP",
+            "단위면적_m2": "42000", "구역코드": "1", "구역명": "", "기준일": "20260801",
+        }], cols=CF.HEADER)
+
+    def 실행(self, extra=None):
+        return CF.main(["--coverage", "--sites", str(self.sites),
+                        "--flow", str(self.flow)] + (extra or []))
+
+    def test_빠진_후보지가_있으면_strict_에서_실패한다(self):
+        """CI 나 스크립트가 이걸로 심의 실행을 막을 수 있어야 한다."""
+        self.assertEqual(self.실행(), 0)
+        self.assertEqual(self.실행(["--strict"]), 1)
+
+    def test_전부_있으면_strict_에서도_통과한다(self):
+        full = write_csv(self.tmp / "sites2.csv", [
+            {"후보지명": "성수 연무장길", "위도": "37.5445", "경도": "127.0557"}])
+        rc = CF.main(["--coverage", "--sites", str(full), "--flow", str(self.flow),
+                      "--strict"])
+        self.assertEqual(rc, 0)
+
+    def test_데이터_공백이_시장_평가로_읽힌다고_경고한다(self):
+        """D_am 은 S 의 13개 지표 중 둘('오전유동'·'임대료대비객수효율')에 들어가고
+        S 는 풀 안 min-max 정규화다. 자료가 없으면 그 후보지가 바닥에 깔리는데,
+        심의표만 보면 상권이 나쁜 것과 구분되지 않는다."""
+        buf = io.StringIO()
+        old = sys.stdout
+        sys.stdout = buf
+        try:
+            self.실행()
+        finally:
+            sys.stdout = old
+        말 = buf.getvalue()
+        self.assertIn("D_am 이 0", 말)
+        self.assertIn("자료를 못 받아서", 말)
+        self.assertIn("부산 서면", 말)
+
+    def test_유동인구_파일이_없어도_죽지_않는다(self):
+        rc = CF.main(["--coverage", "--sites", str(self.sites),
+                      "--flow", str(self.tmp / "없는파일.csv")])
+        self.assertEqual(rc, 0)
 
 
 if __name__ == "__main__":

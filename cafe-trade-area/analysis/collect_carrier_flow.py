@@ -1,26 +1,35 @@
 #!/usr/bin/env python3
 """
-통신사 유동인구 수집 · 반입
+통신사 유동인구 수집 · 반입 (전국)
 
-M2 의 D_am 은 알고리즘에서 가장 크게 판정을 움직이는 값이고, 지금까지 이 저장소가
-쓸 수 있는 것은 서울시 상권분석서비스의 길단위인구(상권 단위)뿐이었다. 통신사
-기지국 데이터는 그보다 촘촘하지만, **받는 방법이 셋으로 갈리고 셋이 서로 다르다.**
-그 차이를 감추면 "통신사 데이터 붙였다" 는 말만 남고 실제로는 아무것도 안 들어온다.
+M2 의 D_am 은 알고리즘에서 가장 크게 판정을 움직이는 값이다. 전국 후보지를 다루려면
+전국 유동인구가 필요한데, **전국을 시간대별로 덮는 무료 공개 API 는 없다.** 확인한
+사실이 이렇다:
 
-  1) 서울 생활인구  KT LTE 시그널 기반. 서울시가 열린데이터광장에 **무료 공개**한다.
-                    집계구/행정동 단위, 시간대별. 지금 바로 붙일 수 있는 유일한
-                    통신사 데이터다.
-  2) SKT 지오비전    openapi.sk.com 에 API 상품이 있다. 앱키와 상품 승인이 필요하고
-                    무료 범위가 정해져 있다.
-  3) 계약형          KT PLIP, SKT 지오비전 기업계약, LG U+ 등. **공개 API 가 없다.**
-                    계약하면 CSV·엑셀로 받는다. 그래서 여기서는 '받아오는' 게 아니라
-                    **반입(import)** 한다 — 이 경로가 실무에서 가장 많이 쓰인다.
+  전국   KT PLIP · SKT 지오비전(전국 250개 시군구) · LG U+(50×50m 블록).
+         셋 다 기업 계약이고 **공개 API 가 없다.** 계약하면 파일로 받으므로
+         여기서는 '받아오는' 게 아니라 **반입(--import)** 한다. 지역별로 나눠 받은
+         파일을 여러 개 한 번에 넣어 한 벌로 합칠 수 있다.
+  지역   무료로 열린 것은 지역 단위로 파편화돼 있다. 서울 생활인구(KT LTE 시그널)가
+         가장 쓸 만하고, 나머지는 공공데이터포털·빅데이터 플랫폼에 지자체별로
+         흩어져 있으며 갱신이 끊긴 자료가 많다.
+
+그래서 이 도구의 무게중심은 '전국 API 를 부른다' 가 아니라 **어디서 받았든 한 벌로
+합치고, 어느 후보지가 비었는지 말해 주는 것**에 있다.
 
   python3 collect_carrier_flow.py --list
-  python3 collect_carrier_flow.py --provider seoul-living --sites 후보지.csv
-  SEOUL_OPENAPI_KEY=... python3 collect_carrier_flow.py --provider seoul-living --live \\
+  python3 collect_carrier_flow.py --import 수도권.csv --import 영남.csv \
+      --provider kt-plip --areas 집계구.csv
+  python3 collect_carrier_flow.py --coverage --sites 후보지.csv          # ← 심의 전에 반드시
+  SEOUL_OPENAPI_KEY=... python3 collect_carrier_flow.py --provider seoul-living --live \
       --areas 집계구.csv --date 20260801
-  python3 collect_carrier_flow.py --import PLIP_2026.csv --provider kt-plip --areas 집계구.csv
+
+⚠ **자료 공백이 시장 평가로 읽힌다 — 이게 전국으로 갈 때 가장 큰 위험이다.**
+   유동인구가 없는 후보지는 D_am 이 0 이 된다. S 는 풀 안에서 min-max 정규화하고
+   13개 지표 중 '오전유동' 과 '임대료대비객수효율' 둘이 D_am 에서 나오므로, 그
+   후보지는 바닥에 깔린다. **상권이 나빠서가 아니라 자료를 못 받아서** 점수가
+   낮아지는데 심의표만 보면 둘을 구분할 수 없다. `--coverage` 를 심의 전에 돌리고,
+   빠진 지역을 채우거나 그 후보지를 풀에서 빼십시오.
 
 ⚠ **실측이 아니다.** 기지국 신호는 '그 구역에 있었다' 는 것이지 '그 앞을 걸어갔다' 가
    아니다. 명세가 요구하는 07~09시 현장 통행량 카운트를 대신하지 못하고, M2 가 이
@@ -31,6 +40,7 @@ M2 의 D_am 은 알고리즘에서 가장 크게 판정을 움직이는 값이�
 ⚠ **면적이 없으면 행을 만들지 않는다.** M2 는 영역 단위 값을 P5 면적비로 안분하므로
    구역 면적(단위면적_m2)이 반드시 필요하다. 면적을 추측해 나눈 값은 근거가 아니다.
    --areas 로 구역코드→면적 표를 주십시오(통계청 SGIS 집계구 경계에서 만든다).
+   집계구·행정동 코드 체계는 전국 공통이라 표만 있으면 지역을 가리지 않는다.
 
 ⚠ **집계구를 쓰십시오.** 행정동은 보통 1~3km² 인데 P5(도보 5분)는 0.35km² 안팎이다.
    중심점이 P5 안에 드는 행정동이 거의 없어 대부분 버려지고, 들어도 면적비가 0.1
@@ -49,6 +59,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+import geo
 from common import read_csv, to_f
 from m2_demand import ALL, AM        # 시간대 표기는 M2 에서 가져온다 — 문자열이 어긋나면
                                      # 행은 멀쩡히 들어가고 D_am 만 0 이 된다
@@ -63,54 +74,55 @@ HEADER = ["지점ID", "위도", "경도", "도로변", "시간대", "인원", "�
 # 각 공급자가 무엇을 주고 무엇을 요구하는지 한자리에 적는다. 화면에도 이대로 뜬다 —
 # '어느 통신사를 쓸 수 있나' 는 질문에 코드를 읽지 않고 답할 수 있어야 한다.
 PROVIDERS = {
-    "seoul-living": {
-        "이름": "서울 생활인구 (KT LTE 시그널)",
-        "통신사": "KT",
-        "받는법": "API",
-        "키": "SEOUL_OPENAPI_KEY",
-        "비용": "무료",
-        "범위": "서울시",
-        "단위": "집계구 · 행정동",
-        "시간": "1시간 단위 (4일 전 데이터까지)",
-        "주소": "https://data.seoul.go.kr",
-        "비고": "서울시와 KT 가 함께 만든 자료. 지금 바로 붙일 수 있는 유일한 통신사 데이터",
-    },
-    "skt-puzzle": {
-        "이름": "SKT 지오비전 퍼즐",
-        "통신사": "SKT",
-        "받는법": "API",
-        "키": "SKT_OPENAPI_APPKEY",
-        "비용": "앱키 발급 + 상품 승인 (무료 범위 있음)",
-        "범위": "전국",
-        "단위": "격자 · 행정동",
-        "시간": "상품마다 다름",
-        "주소": "https://openapi.sk.com",
-        "비고": "엔드포인트와 응답 형식을 확인하지 못했다 — 첫 호출로 맞춰야 한다",
-    },
+    # ── 전국 · 계약형 ────────────────────────────────
+    # 전국을 시간대별로 덮는 것은 지금 이 셋뿐이고, 셋 다 유료 계약이다.
+    # 공개 API 가 없으므로 계약 후 받은 파일을 --import 로 넣는다.
     "kt-plip": {
         "이름": "KT PLIP (생활이동분석)",
-        "통신사": "KT",
-        "받는법": "반입",
-        "키": "",
-        "비용": "기업 계약",
-        "범위": "전국",
-        "단위": "계약 조건",
-        "시간": "계약 조건",
+        "통신사": "KT", "받는법": "반입", "키": "", "비용": "기업 계약",
+        "범위": "전국", "단위": "행정동 · 계약 조건", "시간": "계약 조건",
         "주소": "https://enterprise.kt.com",
-        "비고": "공개 API 없음. 계약 후 받은 파일을 --import 로 넣는다",
+        "비고": "공개 API 없음. 전국을 덮으려면 이 경로가 현실적이다",
     },
     "skt-geovision": {
         "이름": "SKT 지오비전 (기업 계약)",
         "통신사": "SKT", "받는법": "반입", "키": "", "비용": "기업 계약",
-        "범위": "전국", "단위": "계약 조건", "시간": "계약 조건",
+        "범위": "전국 250개 시군구", "단위": "pCell · 행정동", "시간": "계약 조건",
         "주소": "https://puzzle.geovision.co.kr",
-        "비고": "공개 API 없음. --import 로 넣는다",
+        "비고": "기지국 RU 단위 측위. 공개 API 없음 — --import 로 넣는다",
     },
     "lgu-flow": {
         "이름": "LG U+ 유동인구",
         "통신사": "LG U+", "받는법": "반입", "키": "", "비용": "기업 계약",
-        "범위": "전국", "단위": "계약 조건", "시간": "계약 조건",
-        "주소": "", "비고": "공개 API 없음. --import 로 넣는다",
+        "범위": "전국", "단위": "50×50m 블록 · 행정동", "시간": "계약 조건",
+        "주소": "", "비고": "격자가 가장 촘촘하다. 공개 API 없음 — --import 로 넣는다",
+    },
+
+    # ── 지역 · 무료 ──────────────────────────────────
+    # 무료로 열려 있는 것은 지역 단위로 파편화돼 있다. 후보지가 그 지역 밖이면
+    # 아무것도 못 받는다 — 그 사실을 --coverage 가 후보지별로 말해 준다.
+    "seoul-living": {
+        "이름": "서울 생활인구 (KT LTE 시그널)",
+        "통신사": "KT", "받는법": "API", "키": "SEOUL_OPENAPI_KEY", "비용": "무료",
+        "범위": "서울시", "단위": "집계구 · 행정동", "시간": "1시간 (4일 전까지)",
+        "주소": "https://data.seoul.go.kr",
+        "비고": "서울시와 KT 가 함께 만든 자료. 무료 통신사 데이터는 사실상 이것뿐이다",
+    },
+    "skt-puzzle": {
+        "이름": "SKT 지오비전 퍼즐 (공개 API)",
+        "통신사": "SKT", "받는법": "API", "키": "SKT_OPENAPI_APPKEY",
+        "비용": "앱키 발급 + 상품 승인 (무료 범위 있음)",
+        "범위": "전국 (상품마다 다름)", "단위": "격자 · 행정동", "시간": "상품마다 다름",
+        "주소": "https://openapi.sk.com",
+        "비고": "엔드포인트와 응답 형식을 확인하지 못했다 — 지금은 --import 를 쓰십시오",
+    },
+    "public-portal": {
+        "이름": "공공데이터포털 · 빅데이터 플랫폼 (지자체 파일)",
+        "통신사": "지자체별 상이", "받는법": "반입", "키": "", "비용": "무료 (가입 필요)",
+        "범위": "지자체별", "단위": "시군구 · 행정동", "시간": "자료마다 다름",
+        "주소": "https://www.data.go.kr",
+        "비고": "전국 통합본이 없고 지자체별로 흩어져 있다. 갱신이 끊긴 자료가 많으니 "
+              "기준일을 확인하고 넣으십시오",
     },
 }
 
@@ -308,6 +320,95 @@ def write_rows(rows: list[dict], path: Path) -> Path:
     return path
 
 
+def dedupe(rows: list[dict]) -> tuple[list[dict], int]:
+    """같은 (구역코드, 시간대, 기준일) 이 여러 파일에 겹쳐 오는 일이 흔하다.
+    지역별로 나눠 받은 파일이 경계에서 겹치거나, 같은 달을 두 번 받거나.
+    그대로 더하면 D_am 이 겹친 만큼 부풀고, 그 후보지만 근거 없이 좋아 보인다."""
+    본것, out, 중복 = set(), [], 0
+    for r in rows:
+        k = (r["구역코드"], r["시간대"], r["기준일"])
+        if k in 본것:
+            중복 += 1
+            continue
+        본것.add(k)
+        out.append(r)
+    return out, 중복
+
+
+def coverage(sites_path: Path, flow_path: Path, radius: float,
+             strict: bool = False) -> int:
+    """후보지별로 유동인구 데이터가 있는가.
+
+    전국을 다루면 커버리지가 반드시 듬성듬성해진다. 그런데 **데이터가 없는 후보지는
+    D_am 이 0 이 되고, S 는 풀 안 min-max 정규화라 그 후보지가 바닥에 깔린다.**
+    S 의 13개 지표 중 '오전유동' 과 '임대료대비객수효율' 둘이 D_am 에서 나오기
+    때문이다. 상권이 나빠서가 아니라 **자료를 못 받아서** 점수가 낮아지는데,
+    심의표만 보면 둘을 구분할 수 없다.
+
+    그래서 심의를 돌리기 전에 여기서 먼저 말한다. P5 는 등시선이라야 정확하지만
+    사전 점검이므로 도보 5분 반경으로 근사한다(그 사실을 화면에도 적는다).
+    """
+    if not sites_path.exists():
+        print(f"후보지 파일이 없습니다: {sites_path}", file=sys.stderr)
+        return 1
+    sites = read_csv(sites_path)
+    flow = read_csv(flow_path) if flow_path.exists() else []
+
+    표 = []
+    빈곳 = 0
+    for st in sites:
+        lat, lon = to_f(st.get("위도")), to_f(st.get("경도"))
+        name = str(st.get("후보지명", "")).strip() or "(이름 없음)"
+        if not (lat and lon):
+            표.append((name, "좌표 없음", 0, 0, set()))
+            빈곳 += 1
+            continue
+        n_am = n_all = 0
+        출처 = set()
+        for r in flow:
+            flat, flon = to_f(r.get("위도")), to_f(r.get("경도"))
+            if not (flat and flon):
+                continue
+            x, y = geo.project(lat, lon, flat, flon)
+            if (x * x + y * y) ** 0.5 > radius:
+                continue
+            출처.add(str(r.get("출처", "")).strip())
+            if str(r.get("시간대", "")).strip() == AM:
+                n_am += 1
+            else:
+                n_all += 1
+        표.append((name, "", n_am, n_all, 출처))
+        if n_am == 0:
+            빈곳 += 1
+
+    print(f"유동인구 커버리지 — 후보지 {len(sites)}곳 · 반경 {radius:g}m "
+          f"(도보 5분 근사, 실제 P5 는 등시선으로 계산됩니다)")
+    print(f"{'후보지':<24} {'오전':>5} {'전체':>5}  출처")
+    for name, 문제, n_am, n_all, 출처 in 표:
+        src = 문제 or (", ".join(sorted(x for x in 출처 if x)) or "—")
+        mark = " " if n_am else "!"
+        print(f"{mark}{name:<23} {n_am:>5} {n_all:>5}  {src}")
+
+    if 빈곳:
+        print()
+        print(f"⛔ {빈곳}곳에 오전 유동인구 데이터가 없습니다.")
+        print("   이대로 심의를 돌리면 그 후보지는 D_am 이 0 이 됩니다. S 는 풀 안에서")
+        print("   min-max 정규화하므로 바닥에 깔리고, 13개 지표 중 '오전유동' 과")
+        print("   '임대료대비객수효율' 둘이 그 값에서 나옵니다 —")
+        print("   **상권이 나빠서가 아니라 자료를 못 받아서 점수가 낮아집니다.**")
+        print("   심의표만 보면 그 둘을 구분할 수 없습니다.")
+        print()
+        print("   할 수 있는 것:")
+        print("   · 그 지역 자료를 마저 받아 --import 로 합치십시오(여러 파일을 한 번에).")
+        print("   · 못 받으면 그 후보지를 이번 풀에서 빼십시오 — 자료가 있는 후보지끼리")
+        print("     비교해야 S 가 뜻을 갖습니다.")
+        print("   · 무료로 열린 것은 지역별로 흩어져 있습니다(--list 참고). 전국을")
+        print("     시간대별로 덮으려면 통신사 계약이 현실적입니다.")
+    else:
+        print("\n모든 후보지에 오전 유동인구가 있습니다.")
+    return 1 if (strict and 빈곳) else 0
+
+
 def 목록() -> str:
     L = ["# 통신사 유동인구 공급자", "",
          "| 키 | 이름 | 통신사 | 받는 법 | 비용 | 범위 | 단위 | 비고 |",
@@ -328,7 +429,17 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="통신사 유동인구를 받거나 반입한다")
     ap.add_argument("--list", action="store_true", help="공급자 목록을 보여 준다")
     ap.add_argument("--provider", default="seoul-living", choices=sorted(PROVIDERS))
-    ap.add_argument("--import", dest="import_path", help="계약으로 받은 파일(CSV)")
+    ap.add_argument("--import", dest="import_paths", action="append", default=[],
+                    help="계약으로 받은 파일(CSV). 여러 번 줄 수 있다 — 지역별로 나눠 "
+                         "받은 파일을 한 벌로 합친다")
+    ap.add_argument("--coverage", action="store_true",
+                    help="후보지별로 유동인구 데이터가 있는지 확인한다 (--sites 필요)")
+    ap.add_argument("--sites", default=str(ROOT / "후보지.example.csv"))
+    ap.add_argument("--flow", default=str(ROOT / "output" / "유동인구_통신사.csv"))
+    ap.add_argument("--radius", type=float, default=333.0,
+                    help="커버리지 확인 반경 m (도보 5분 근사, 기본 333)")
+    ap.add_argument("--strict", action="store_true",
+                    help="데이터 없는 후보지가 하나라도 있으면 0 이 아닌 코드로 끝낸다")
     ap.add_argument("--areas", help="구역코드→면적·중심점 표 (CSV)")
     ap.add_argument("--map", action="append", default=[],
                     help="열 이름 잇기. 예: --map 인원=총생활인구수")
@@ -352,16 +463,29 @@ def main(argv=None) -> int:
     areas = load_areas(args.areas)
     out = Path(args.out)
 
+    if args.coverage:
+        return coverage(Path(args.sites), Path(args.flow), args.radius, args.strict)
+
     # ── 반입 ──────────────────────────────────────
-    if args.import_path:
-        p = Path(args.import_path)
-        if not p.exists():
-            print(f"파일이 없습니다: {p}", file=sys.stderr)
-            return 1
-        records = read_csv(p)
+    if args.import_paths:
+        records, 원본 = [], 0
+        for one in args.import_paths:
+            p = Path(one)
+            if not p.exists():
+                print(f"파일이 없습니다: {p}", file=sys.stderr)
+                return 1
+            got = read_csv(p)
+            원본 += len(got)
+            records += got
         rows, 버림 = to_rows(records, areas, prov["이름"], mapping=mapping)
+        # 같은 구역이 여러 파일에 겹쳐 오면 합계가 부풀어 D_am 이 배로 뛴다
+        rows, 중복 = dedupe(rows)
         write_rows(rows, out)
-        print(f"반입 {prov['이름']} — 읽은 행 {len(records)} · 만든 행 {len(rows)}")
+        print(f"반입 {prov['이름']} — 파일 {len(args.import_paths)}개 · "
+              f"읽은 행 {원본} · 만든 행 {len(rows)}")
+        if 중복:
+            print(f"  겹친 구역 {중복}건은 한 번만 넣었습니다 — 그대로 두면 D_am 이 "
+                  f"겹친 만큼 부풀어 오릅니다")
         for k, v in 버림.items():
             if v:
                 print(f"  버림 {k} {v}건")
@@ -373,6 +497,8 @@ def main(argv=None) -> int:
                   "P5 면적비로 안분하므로 구역 면적이 필요합니다 — --areas 로 "
                   "구역코드→면적 표를 주십시오(통계청 SGIS 집계구 경계).")
         print(f"  → {out}")
+        print("  다음: --coverage 로 후보지별 데이터 유무를 확인하십시오 — "
+              "빠진 후보지는 D_am 이 0 이 되고, 그게 시장 평가처럼 읽힙니다.")
         return 0
 
     # ── API ───────────────────────────────────────
