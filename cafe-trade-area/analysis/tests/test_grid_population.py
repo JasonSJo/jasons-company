@@ -484,5 +484,97 @@ class TestKosisFetch(unittest.TestCase):
         self.assertEqual(rc, 1)
 
 
+class TestMakeAreas(unittest.TestCase):
+    """--areas 표는 전국 229개를 다 만들 필요가 없다. 이번 후보지가 속한 구역만
+    채우면 되고, 어느 코드가 필요한지 도구가 짚어 준다."""
+
+    def setUp(self):
+        import csv
+        self.tmp = Path(tempfile.mkdtemp(prefix="mkareas-"))
+        self.sites = self.tmp / "sites.csv"
+        with self.sites.open("w", encoding="utf-8-sig", newline="") as f:
+            w = csv.DictWriter(f, fieldnames=["후보지명", "주소", "법정동코드"])
+            w.writeheader()
+            w.writerows([
+                {"후보지명": "성수", "주소": "서울 성동구", "법정동코드": "1120011400"},
+                {"후보지명": "강남", "주소": "서울 강남구", "법정동코드": "1168010100"},
+                {"후보지명": "성수2", "주소": "서울 성동구", "법정동코드": "1120010300"},
+                {"후보지명": "코드없음", "주소": "어딘가", "법정동코드": ""},
+            ])
+
+    def 실행(self):
+        out = self.tmp / "areas.csv"
+        buf, old = io.StringIO(), sys.stdout
+        sys.stdout = buf
+        try:
+            rc = GP.main(["--make-areas", "--sites", str(self.sites),
+                          "--areas", str(out)])
+        finally:
+            sys.stdout = old
+        return rc, out, buf.getvalue()
+
+    def test_법정동코드_앞_다섯_자리로_묶는다(self):
+        """같은 시군구의 후보지 둘이 줄 두 개가 되면 사람이 같은 값을 두 번 채운다."""
+        rc, out, _ = self.실행()
+        self.assertEqual(rc, 0)
+        rows = read_csv(out)
+        self.assertEqual(sorted(r["구역코드"] for r in rows), ["11200", "11680"])
+
+    def test_면적과_좌표를_비워_둔다(self):
+        """지어내면 그 값으로 배후 수요가 안분되고 아무도 추측이었다는 걸 모른다."""
+        rc, out, _ = self.실행()
+        for r in read_csv(out):
+            self.assertEqual(r["면적_m2"], "")
+            self.assertEqual(r["위도"], "")
+            self.assertEqual(r["경도"], "")
+
+    def test_어느_후보지_때문에_필요한지_적는다(self):
+        rc, out, 말 = self.실행()
+        비고 = " ".join(r["비고"] for r in read_csv(out))
+        self.assertIn("성수", 비고)
+        self.assertIn("강남", 비고)
+
+    def test_법정동코드가_없는_후보지를_짚어_준다(self):
+        rc, out, 말 = self.실행()
+        self.assertIn("코드없음", 말)
+        self.assertIn("주소를 검색", 말)
+
+    def test_만든_표를_load_areas_가_읽는다(self):
+        """유동인구 쪽과 같은 형식이어야 표 하나를 양쪽에 쓴다."""
+        rc, out, _ = self.실행()
+        got = GP.load_areas(out)
+        self.assertEqual(sorted(got), ["11200", "11680"])
+
+
+class TestPlaceholderGuard(unittest.TestCase):
+    def test_자리표시자_통계표_ID_를_잡는다(self):
+        """문서의 DT_xxxx 를 그대로 넣으면, 그냥 부르면 무슨 일인지 알기 어려운
+        API 오류가 난다. 부르기 전에 말해 준다."""
+        import os
+        tmp = Path(tempfile.mkdtemp(prefix="ph-"))
+        import csv
+        areas = tmp / "a.csv"
+        with areas.open("w", encoding="utf-8-sig", newline="") as f:
+            w = csv.DictWriter(f, fieldnames=["구역코드", "면적_m2", "위도", "경도"])
+            w.writeheader()
+            w.writerow({"구역코드": "11200", "면적_m2": "1", "위도": "37.5", "경도": "127.0"})
+        saved = os.environ.get("KOSIS_API_KEY")
+        os.environ["KOSIS_API_KEY"] = "K"
+        buf, old = io.StringIO(), sys.stderr
+        sys.stderr = buf
+        try:
+            rc = GP.main(["--source", "kosis", "--live", "--areas", str(areas),
+                          "--tbl-id-household", "DT_xxxx",
+                          "--out", str(tmp / "o.csv")])
+        finally:
+            sys.stderr = old
+            if saved is None:
+                os.environ.pop("KOSIS_API_KEY", None)
+            else:
+                os.environ["KOSIS_API_KEY"] = saved
+        self.assertEqual(rc, 2)
+        self.assertIn("자리표시자", buf.getvalue())
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

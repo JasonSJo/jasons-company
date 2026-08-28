@@ -491,6 +491,49 @@ def kosis_probe(api_key: str) -> int:
     return 0 if 찾음 else 1
 
 
+def make_areas(sites: list[dict], out: Path) -> int:
+    """후보지에 필요한 구역코드만 골라 --areas 표의 뼈대를 만든다.
+
+    전국 229개 시군구 표를 통째로 만들 필요가 없다. 이번 심의에 올린 후보지가
+    속한 구역만 채우면 되고, 그게 보통 몇 개다. 어느 코드가 필요한지 여기서
+    짚어 주면 사람이 그 줄만 채우면 된다.
+
+    면적과 중심점은 **비워서 낸다.** 여기서 지어내면 그 값으로 배후 수요가 안분되고,
+    아무도 그게 추측이었다는 걸 모르게 된다. 어디서 받아 채우는지는 함께 적는다.
+    """
+    코드 = {}
+    for st in sites:
+        b = "".join(ch for ch in str(st.get("법정동코드") or "") if ch.isdigit())
+        이름 = str(st.get("후보지명", "")).strip()
+        주소 = str(st.get("주소", "")).strip()
+        if len(b) >= 5:
+            코드.setdefault(b[:5], []).append(이름)
+        else:
+            코드.setdefault("", []).append(f"{이름} ({주소 or '주소 없음'})")
+
+    없는것 = 코드.pop("", [])
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with out.open("w", encoding="utf-8-sig", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["구역코드", "구역명", "면적_m2", "위도", "경도", "비고"])
+        for code, names in sorted(코드.items()):
+            w.writerow([code, "", "", "", "", "후보지: " + ", ".join(sorted(set(names)))])
+
+    print(f"--areas 뼈대를 만들었습니다 — 시군구 {len(코드)}개 → {out}")
+    for code, names in sorted(코드.items()):
+        print(f"  {code}  ← {', '.join(sorted(set(names)))}")
+    if 없는것:
+        print(f"\n  ⚠ 법정동코드가 없는 후보지 {len(없는것)}곳: {', '.join(없는것)}")
+        print("     입력 화면에서 주소를 검색하면 자동으로 채워집니다.")
+    print("\n면적_m2 · 위도 · 경도는 비워 뒀습니다. 지어내면 그 값으로 배후 수요가")
+    print("안분되고 아무도 그게 추측이었다는 걸 모르게 됩니다. 아래에서 채우십시오:")
+    print("  · 면적  KOSIS '지적통계 — 행정구역별 국토이용현황' 또는")
+    print("          행정안전부 행정구역 경계(data.go.kr)에서 계산")
+    print("  · 중심점 같은 경계 파일의 도형 중심(centroid)")
+    print("\n채운 뒤: --areas 로 넣으면 KOSIS·통신사 유동인구 양쪽에서 같이 씁니다.")
+    return 0
+
+
 def kosis_run(args, out: Path) -> int:
     """KOSIS 에서 세대수·종사자수를 받아 격자인구.csv 를 만든다."""
     api_key = os.environ.get("KOSIS_API_KEY", "").strip()
@@ -519,6 +562,14 @@ def kosis_run(args, out: Path) -> int:
         print("--tbl-id-household 나 --tbl-id-worker 중 하나는 있어야 합니다.",
               file=sys.stderr)
         print("  --probe 로 통계표를 먼저 고르십시오.", file=sys.stderr)
+        return 2
+    자리표시자 = [t for t in (args.tbl_id_household, args.tbl_id_worker)
+              if t and ("x" * 3 in t.lower() or "y" * 3 in t.lower())]
+    if 자리표시자:
+        print(f"통계표 ID 가 아직 자리표시자입니다: {', '.join(자리표시자)}",
+              file=sys.stderr)
+        print("  문서의 DT_xxxx / DT_yyyy 는 예시 자리입니다. --probe 로 실제 표를 "
+              "고른 뒤 그 TBL_ID 를 넣으십시오.", file=sys.stderr)
         return 2
     if not areas:
         print("--areas 로 구역코드→면적·중심점 표가 필요합니다.", file=sys.stderr)
@@ -572,6 +623,8 @@ def main(argv=None) -> int:
     ap.add_argument("--year", default="2023", help="--probe 에서 쓸 기준연도")
     # KOSIS 조회 — probe 로 표를 고른 뒤 여기에 넣는다. 코드를 고칠 필요가 없다.
     ap.add_argument("--areas", help="구역코드→면적·중심점 표 (CSV). KOSIS 조회에 필요하다")
+    ap.add_argument("--make-areas", action="store_true",
+                    help="후보지에 필요한 구역코드만 골라 --areas 표의 뼈대를 만든다")
     ap.add_argument("--org-id", default="101", help="KOSIS 기관코드 (통계청=101)")
     ap.add_argument("--tbl-id-household", default="", help="세대수 통계표 ID")
     ap.add_argument("--tbl-id-worker", default="", help="종사자수 통계표 ID")
@@ -595,6 +648,9 @@ def main(argv=None) -> int:
     좌표없음 = len(sites) - len(boxes)
     key = os.environ.get("SGIS_KEY", "").strip()
     secret = os.environ.get("SGIS_SECRET", "").strip()
+
+    if args.make_areas:
+        return make_areas(sites, Path(args.areas or (ROOT / "output" / "행정구역.csv")))
 
     if args.probe:
         if args.source == "kosis":
