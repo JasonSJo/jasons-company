@@ -12,10 +12,14 @@ H·W 는 M2 의 배후 수요다. 지금까지 격자인구.csv 를 사람이 �
 """
 from __future__ import annotations
 
+import io
+import json
 import math
 import sys
 import tempfile
 import unittest
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -134,6 +138,94 @@ class TestDryRun(unittest.TestCase):
             for k, v in saved.items():
                 if v is not None:
                     os.environ[k] = v
+
+
+class TestProbe(unittest.TestCase):
+    """SGIS 문서를 이 환경에서 열 수 없어 자료 엔드포인트를 확정하지 못했다.
+    추측으로 코드를 쌓는 대신, 키가 있는 곳에서 한 번 돌리면 진실이 나오게 한다."""
+
+    def setUp(self):
+        self.원래 = urllib.request.urlopen
+        self.응답 = {
+            GP.AUTH_URL: {"result": {"accessToken": "TOKEN-abc"}},
+            "https://sgisapi.kostat.go.kr/OpenAPI3/stats/household.json":
+                {"errCd": 0, "result": [{"adm_cd": "11", "adm_nm": "서울특별시",
+                                         "household_cnt": "4227000"}]},
+        }
+
+        class FakeResp:
+            def __init__(s, body):
+                s._b = body.encode()
+                s.status = 200
+            def read(s):
+                return s._b
+            def __enter__(s):
+                return s
+            def __exit__(s, *a):
+                return False
+
+        def fake(url, timeout=None, context=None):
+            base = url.split("?")[0]
+            if base in self.응답:
+                return FakeResp(json.dumps(self.응답[base], ensure_ascii=False))
+            raise urllib.error.HTTPError(url, 404, "Not Found", None, None)
+
+        urllib.request.urlopen = fake
+
+    def tearDown(self):
+        urllib.request.urlopen = self.원래
+
+    def 실행(self):
+        buf, old = io.StringIO(), sys.stdout
+        sys.stdout = buf
+        try:
+            rc = GP.probe("KEY", "SECRET", GP.AUTH_URL, "11", "2023", None)
+        finally:
+            sys.stdout = old
+        return rc, buf.getvalue()
+
+    def test_응답한_것과_아닌_것을_갈라_보여_준다(self):
+        rc, 말 = self.실행()
+        self.assertEqual(rc, 0)
+        self.assertIn("토큰 발급됨", 말)
+        self.assertIn("household.json", 말)
+        self.assertIn("household_cnt", 말, "응답 필드를 보여 주지 않습니다")
+        self.assertIn("HTTP 404", 말, "실패한 후보도 보여 줘야 합니다")
+
+    def test_인증이_실패하면_거기서_멈춘다(self):
+        self.응답 = {GP.AUTH_URL: {"result": {}}}
+        rc, 말 = self.실행()
+        self.assertEqual(rc, 1)
+        self.assertIn("토큰 발급 실패", 말)
+
+    def test_하나도_답하지_않으면_0_이_아닌_코드(self):
+        self.응답 = {GP.AUTH_URL: {"result": {"accessToken": "T"}}}
+        rc, 말 = self.실행()
+        self.assertEqual(rc, 1)
+        self.assertIn("응답한 엔드포인트가 없습니다", 말)
+
+    def test_키가_없으면_발급_방법을_알려_준다(self):
+        buf, old = io.StringIO(), sys.stderr
+        sys.stderr = buf
+        try:
+            rc = GP.probe("", "", GP.AUTH_URL, "11", "2023", None)
+        finally:
+            sys.stderr = old
+        self.assertEqual(rc, 2)
+        self.assertIn("개발지원센터", buf.getvalue())
+
+
+class TestConfirmedEndpoints(unittest.TestCase):
+    def test_인증_주소는_문서로_확인한_것이다(self):
+        self.assertEqual(
+            GP.AUTH_URL,
+            "https://sgisapi.kostat.go.kr/OpenAPI3/auth/authentication.json")
+
+    def test_후보에_가구와_사업체가_들어_있다(self):
+        """H 는 세대수, W 는 종사자수에서 온다. 둘 다 눌러 봐야 한다."""
+        urls = " ".join(u for _, u, _, _ in GP.CANDIDATES)
+        self.assertIn("household", urls)
+        self.assertIn("company", urls)
 
 
 if __name__ == "__main__":

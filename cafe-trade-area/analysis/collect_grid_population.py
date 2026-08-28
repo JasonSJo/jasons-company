@@ -13,12 +13,21 @@ SGIS 는 전국 격자 센서스를 무료 API 로 준다. 여기를 이으면 �
 '있었을 것' 을 세는 값이 아니다. 그래서 M2 도 이 값에는 대용 경고를 붙이지 않는다.
 전국 어디서나 같은 방식으로 나오므로 지역 편차 걱정도 없다.
 
-⚠ **인증과 응답 형식을 실제 호출로 확인하지 못했다.** SGIS 는 consumer_key/secret 으로
-   accessToken 을 받아 쓰는 2단 인증이고, 이 실행 환경이 sgisapi.kostat.go.kr 을
-   막아 한 번도 호출해 보지 못했다. 그래서:
-     · 토큰 발급과 조회를 --auth-url / --data-url 로 갈아끼울 수 있게 뒀다
-     · 필드명 후보를 여러 개 두고, 하나도 못 읽으면 응답 앞부분을 그대로 출력한다
-     · dry-run 은 인구 수를 지어내지 않는다 (빈 표만 만든다)
+확인한 것과 아직 못 한 것을 갈라 둔다.
+
+  ✅ 인증  consumer_key/secret → result.accessToken (문서로 확인)
+  ❓ 조회  SGIS 통계 API 는 좌표 사각형이 아니라 **adm_cd(행정구역코드) + year** 로
+          부르는 형태다(household.json → household_cnt, company.json → 종사자수).
+          격자 단위 상품이 따로 있는지는 이 환경에서 문서를 열 수 없어 확정하지
+          못했다. 처음 세운 bbox 가정은 틀렸을 가능성이 높다.
+
+  그래서 추측으로 코드를 더 쌓는 대신 **--probe** 를 뒀다. 키가 있는 곳에서 한 번
+  돌리면 후보 엔드포인트를 하나씩 눌러 보고 무엇이 답하는지, 응답 필드가 무엇인지
+  그대로 출력한다. 그 출력이 연동을 확정하는 근거다.
+
+      SGIS_KEY=... SGIS_SECRET=... python3 collect_grid_population.py --probe
+
+⚠ dry-run 은 인구 수를 지어내지 않는다 (빈 표만 만든다).
 """
 from __future__ import annotations
 
@@ -38,8 +47,30 @@ from common import read_csv, to_f
 
 ROOT = Path(__file__).resolve().parent
 
+# 인증은 문서로 확인했다: consumer_key/secret → result.accessToken
 AUTH_URL = "https://sgisapi.kostat.go.kr/OpenAPI3/auth/authentication.json"
-DATA_URL = "https://sgisapi.kostat.go.kr/OpenAPI3/startupbiz/pplsummary.json"
+
+# 자료 조회는 아직 확인 중이다. SGIS 통계 API 는 좌표 사각형이 아니라
+# **adm_cd(행정구역코드) + year** 로 부르는 형태이고(household.json 은 household_cnt 를,
+# population.json 은 population 을 준다), 격자 단위 상품이 따로 있는지는 문서를
+# 열지 못해 확정하지 못했다. 그래서 후보 엔드포인트를 여러 개 두고 --probe 로
+# 실제 키를 써서 어느 것이 답하는지 한 번에 알아본다.
+DATA_URL = "https://sgisapi.kostat.go.kr/OpenAPI3/stats/household.json"
+
+CANDIDATES = [
+    ("가구(행정동)", "https://sgisapi.kostat.go.kr/OpenAPI3/stats/household.json",
+     "adm_cd", "household_cnt 세대수"),
+    ("인구(행정동)", "https://sgisapi.kostat.go.kr/OpenAPI3/stats/population.json",
+     "adm_cd", "population 총인구"),
+    ("인구 검색", "https://sgisapi.kostat.go.kr/OpenAPI3/stats/searchpopulation.json",
+     "adm_cd", "population · avg_age"),
+    ("사업체(행정동)", "https://sgisapi.kostat.go.kr/OpenAPI3/stats/company.json",
+     "adm_cd", "종사자수 = W 후보"),
+    ("행정구역 단계", "https://sgisapi.kostat.go.kr/OpenAPI3/addr/stage.json",
+     "none", "adm_cd 목록 — 좌표→코드 변환의 출발점"),
+    ("창업 인구요약", "https://sgisapi.kostat.go.kr/OpenAPI3/startupbiz/pplsummary.json",
+     "bbox", "격자/영역 인구 (형식 미확인)"),
+]
 
 # M2 가 먹는 격자인구.csv 열
 HEADER = ["격자ID", "중심위도", "중심경도", "한변_m", "세대수", "직장인구"]
@@ -178,12 +209,121 @@ def write_rows(rows: list[dict], path: Path) -> Path:
     return path
 
 
+def _probe_one(token: str, url: str, params: dict, timeout: int = 20) -> dict:
+    """엔드포인트 하나를 눌러 보고 결과를 그대로 담아 온다. 판단은 사람이 한다."""
+    q = urllib.parse.urlencode({**params, "accessToken": token})
+    full = f"{url}?{q}"
+    try:
+        with urllib.request.urlopen(full, timeout=timeout,
+                                    context=ssl.create_default_context()) as r:
+            body = r.read().decode("utf-8", "replace")
+            status = r.status
+    except urllib.error.HTTPError as e:
+        return {"ok": False, "status": e.code, "말": f"HTTP {e.code}"}
+    except OSError as e:
+        return {"ok": False, "status": 0, "말": f"{type(e).__name__}: {e}"}
+
+    try:
+        doc = json.loads(body)
+    except ValueError:
+        return {"ok": False, "status": status, "말": "JSON 이 아님",
+                "앞부분": body[:300]}
+
+    errcd = str(doc.get("errCd", "0"))
+    if errcd not in ("0", "None", ""):
+        return {"ok": False, "status": status,
+                "말": f"errCd {errcd} {doc.get('errMsg', '')}"}
+
+    res = doc.get("result")
+    첫 = None
+    if isinstance(res, list) and res:
+        첫 = res[0]
+    elif isinstance(res, dict):
+        첫 = res
+    return {"ok": True, "status": status, "말": "응답 있음",
+            "건수": len(res) if isinstance(res, list) else 1,
+            "필드": sorted(첫)[:25] if isinstance(첫, dict) else None,
+            "표본": json.dumps(첫, ensure_ascii=False)[:400] if 첫 else "",
+            "앞부분": body[:300] if 첫 is None else ""}
+
+
+def probe(key: str, secret: str, auth_url: str, adm_cd: str, year: str,
+          box: dict = None) -> int:
+    """키를 가지고 실제로 눌러 보고, 무엇이 답하는지 그대로 출력한다.
+
+    SGIS 문서를 이 환경에서 열 수 없어 자료 엔드포인트를 확정하지 못했다. 추측으로
+    코드를 더 쌓는 대신, 키가 있는 곳에서 한 번 돌리면 진실이 나오게 만든다.
+    이 출력을 그대로 붙여 주면 연동을 정확히 맞출 수 있다.
+    """
+    if not (key and secret):
+        print("SGIS_KEY / SGIS_SECRET 이 필요합니다.", file=sys.stderr)
+        print("  발급: sgis.kostat.go.kr → 개발지원센터 → 오픈API → 인증키 신청",
+              file=sys.stderr)
+        return 2
+
+    print("SGIS 연동 점검")
+    print(f"  인증  {auth_url}")
+    token, err = get_token(key, secret, auth_url)
+    if err:
+        print(f"  ✕ 토큰 발급 실패 — {err}")
+        print("\n키가 맞는지, 승인이 끝났는지 확인하십시오. 신청 직후에는 "
+              "승인까지 시간이 걸릴 수 있습니다.")
+        return 1
+    print(f"  ✓ 토큰 발급됨 ({len(token)}자)")
+
+    print("\n후보 엔드포인트를 하나씩 눌러 봅니다. 이 표가 연동을 확정하는 근거입니다.")
+    작동 = []
+    for 이름, url, kind, 설명 in CANDIDATES:
+        if kind == "adm_cd":
+            params = {"adm_cd": adm_cd, "year": year}
+        elif kind == "bbox" and box:
+            params = {"minx": box["minx"], "miny": box["miny"],
+                      "maxx": box["maxx"], "maxy": box["maxy"]}
+        elif kind == "bbox":
+            params = {}
+        else:
+            params = {}
+        got = _probe_one(token, url, params)
+        mark = "✓" if got["ok"] else "✕"
+        print(f"\n{mark} {이름}  ({설명})")
+        print(f"   {url}")
+        if params:
+            print(f"   파라미터 {params}")
+        print(f"   → {got['말']}")
+        if got.get("필드"):
+            print(f"   필드 {got['필드']}")
+        if got.get("표본"):
+            print(f"   표본 {got['표본']}")
+        if got.get("앞부분"):
+            print(f"   응답 앞부분 {got['앞부분']}")
+        if got["ok"]:
+            작동.append(이름)
+
+    print("\n" + "─" * 60)
+    if 작동:
+        print(f"응답한 엔드포인트: {', '.join(작동)}")
+        print("이 출력을 그대로 전달해 주시면 FIELDS 와 DATA_URL 을 정확히 맞추겠습니다.")
+        print("특히 볼 것: 세대수(household_cnt)와 직장인구(종사자수)에 해당하는 "
+              "필드명, 그리고 좌표나 격자 단위가 있는지.")
+    else:
+        print("응답한 엔드포인트가 없습니다. 인증은 됐으므로 키 문제는 아니고, "
+              "주소나 파라미터가 다릅니다.")
+        print("SGIS 개발지원센터의 '데이터 API' 문서에서 실제 주소를 확인해 "
+              "--data-url 로 넣어 주십시오.")
+    return 0 if 작동 else 1
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="통계청 SGIS 격자 인구를 받는다 (전국)")
     ap.add_argument("--sites", default=str(ROOT / "후보지.example.csv"))
     ap.add_argument("--radius", type=float, default=DEFAULT_RADIUS,
                     help=f"후보지 주변 조회 반경 m (기본 {DEFAULT_RADIUS:g} · P10 을 덮어야 한다)")
     ap.add_argument("--live", action="store_true", help="실제로 호출한다(기본은 dry-run)")
+    ap.add_argument("--probe", action="store_true",
+                    help="키로 인증한 뒤 후보 엔드포인트를 하나씩 눌러 보고 무엇이 "
+                         "답하는지 그대로 출력한다. 이 출력이 연동을 확정하는 근거다")
+    ap.add_argument("--adm-cd", default="11", help="--probe 에서 쓸 행정구역코드 (기본 11 = 서울)")
+    ap.add_argument("--year", default="2023", help="--probe 에서 쓸 기준연도")
     ap.add_argument("--auth-url", default=AUTH_URL)
     ap.add_argument("--data-url", default=DATA_URL)
     ap.add_argument("--out", default=str(ROOT / "output" / "격자인구.csv"))
@@ -200,6 +340,10 @@ def main(argv=None) -> int:
     좌표없음 = len(sites) - len(boxes)
     key = os.environ.get("SGIS_KEY", "").strip()
     secret = os.environ.get("SGIS_SECRET", "").strip()
+
+    if args.probe:
+        return probe(key, secret, args.auth_url, args.adm_cd, args.year,
+                     boxes[0] if boxes else None)
 
     if not args.live:
         write_rows([], out)
