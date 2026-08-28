@@ -217,11 +217,20 @@
           </div>` : ''}
           <div class="row"><span class="lb">좌표</span>
             ${좌표있음
-              ? `<b class="mono">${esc(위도)}, ${esc(경도)}</b>
+              ? `<b class="mono" id="cortext">${esc(위도)}, ${esc(경도)}</b>
                  <button class="sm ghost" type="button" id="coredit">고치기</button>`
               : `<span class="miss">없음 — 지도에서 복사해 붙여넣으세요</span>
                  <button class="sm" type="button" id="coredit">좌표 붙여넣기</button>`}
           </div>
+          ${좌표있음 && PLACE.hasKey() ? `
+          <div class="mapwrap">
+            <div id="map" class="mapbox" role="img"
+              aria-label="후보지 위치 지도 — 마커를 끌거나 지도를 눌러 자리를 옮길 수 있습니다"></div>
+            <p class="note maphint">지도를 눌러 마커를 옮기면 <b>좌표만</b> 바뀝니다.
+              주소·우편번호·법정동코드는 그 자리의 신원이라 자동으로 갈아 끼우지 않습니다 —
+              옮긴 자리의 주소가 다르면 아래에 알려 드립니다.</p>
+            <div id="drift" class="drift hide"></div>
+          </div>` : ''}
           <div id="corbox" class="hide">
             <div class="searchrow">
               <label class="vh" for="corin">위도, 경도</label>
@@ -316,6 +325,77 @@
       save(); render();
       toast('좌표를 넣었습니다');
     });
+
+    wireMap(el);
+  }
+
+  /* ── 지도 ─────────────────────────────────────
+     좌표 두 줄만 봐서는 그 자리가 맞는지 사람이 판단할 수 없다. 지도에 찍어 두면
+     검색이 엉뚱한 곳을 짚었을 때 한눈에 보이고, 마커를 옮겨 바로잡을 수 있다.
+
+     옮기면 좌표만 바꾼다. 주소·우편번호·법정동코드는 그 자리의 신원이고 실거래가
+     지역코드까지 이어지므로 조용히 갈아 끼우지 않는다 — 달라졌으면 알리고, 사람이
+     누를 때만 바꾼다. */
+  let 지도 = null;
+
+  function 지도정리() {
+    if (지도) { try { 지도.destroy(); } catch (e) { /* 이미 사라짐 */ } 지도 = null; }
+  }
+
+  function wireMap(el) {
+    지도정리();
+    const box = el.querySelector('#map');
+    if (!box) return;                       // 좌표가 없거나 키가 없다
+    const s2 = sites[cur];
+
+    PLACE.showMap(box, { 위도: s2.위도, 경도: s2.경도 }, moved => {
+      // 좌표는 바로 반영한다. 화면을 다시 그리지 않는다 — 그리면 지도가 날아간다.
+      const s3 = sites[cur];
+      // 7자리면 1cm 남짓이다. 그 아래는 의미가 없고, 뒤에 붙는 0 은 CSV 만 지저분해진다.
+      const 자르기 = v => String(Number(Number(v).toFixed(7)));
+      s3.위도 = 자르기(moved.위도);
+      s3.경도 = 자르기(moved.경도);
+      save();
+      const 좌표칸 = el.querySelector('#cortext');
+      if (좌표칸) 좌표칸.textContent = `${s3.위도}, ${s3.경도}`;
+      알림(el, moved);
+    }).then(h => { 지도 = h; })
+      .catch(e => {
+        box.innerHTML = `<div class="mapfail">지도를 불러오지 못했습니다 — ${esc(e.message)}</div>`;
+      });
+  }
+
+  // 옮긴 자리의 주소가 기록된 주소와 다른가. 다르면 무엇이 어긋났는지 보여 준다.
+  function 알림(el, at) {
+    const drift = el.querySelector('#drift');
+    if (!drift) return;
+    PLACE.whereIs(at.위도, at.경도).then(found => {
+      const s3 = sites[cur];
+      const 지금 = String(s3.주소 || '').trim();
+      if (!found.주소 || found.주소 === 지금) { drift.classList.add('hide'); return; }
+      const 동달라짐 = found.법정동코드 &&
+        PLACE.lawdCode(found.법정동코드) !== PLACE.lawdCode(s3.법정동코드);
+      drift.className = 'drift';
+      drift.innerHTML = `<p><b>옮긴 자리의 주소가 다릅니다.</b><br/>
+        기록된 주소 <span class="mono">${esc(지금 || '—')}</span><br/>
+        이 자리 <span class="mono">${esc(found.주소)}</span></p>
+        ${동달라짐 ? `<p class="warn">법정동이 바뀌었습니다 —
+          실거래가 지역코드도 <span class="mono">${esc(PLACE.lawdCode(s3.법정동코드) || '—')}</span>
+          → <span class="mono">${esc(PLACE.lawdCode(found.법정동코드))}</span> 로 달라집니다.</p>` : ''}
+        <button class="sm" type="button" id="driftok">주소도 이 자리로 바꾸기</button>
+        <button class="sm ghost" type="button" id="driftno">그대로 두기</button>`;
+      const ok = drift.querySelector('#driftok');
+      const no = drift.querySelector('#driftno');
+      if (ok) ok.onclick = () => {
+        const s4 = sites[cur];
+        s4.주소 = found.주소;
+        if (found.우편번호) s4.우편번호 = found.우편번호;
+        if (found.법정동코드) s4.법정동코드 = found.법정동코드;
+        save(); render();
+        toast('주소를 이 자리로 바꿨습니다');
+      };
+      if (no) no.onclick = () => drift.classList.add('hide');
+    }).catch(() => { /* 역지오코딩 실패는 조용히 넘긴다 — 좌표는 이미 반영됐다 */ });
   }
 
   /* ── 간편 입력 ─────────────────────────────────

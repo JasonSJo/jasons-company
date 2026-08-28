@@ -159,5 +159,76 @@ class TestSearchTimeout(unittest.TestCase):
         self.assertIn("clearTimeout", src)   # 성공했는데 뒤늦게 거절하지 않는다
 
 
+class TestMapAndReverse(unittest.TestCase):
+    """지도와 역지오코딩 — 좌표를 눈으로 확인하고 손으로 바로잡는 경로.
+
+    좌표 두 줄만 봐서는 그 자리가 맞는지 사람이 판단할 수 없다. 검색이 엉뚱한 곳을
+    짚어도 알아챌 방법이 없었다. 가짜 SDK 로 배선만 검사한다 — 실제 카카오에 붙지
+    않는다.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        if not shutil.which("node"):
+            raise unittest.SkipTest("node 가 없어 위치 모듈 검사를 건너뜁니다")
+        p = subprocess.run(["node", str(DUMP)], capture_output=True, text=True, timeout=60)
+        if p.returncode != 0:
+            raise AssertionError(f"place_dump.js 실패:\n{p.stderr}")
+        d = json.loads(p.stdout)
+        cls.역 = {c["사례"]: c for c in d["역"]}
+        cls.지도 = d["지도"]
+
+    def test_카카오는_경도를_먼저_받는다(self):
+        """순서를 바꿔 넣으면 오류도 없이 엉뚱한 곳이 나온다 — 가장 조용한 종류의 버그다."""
+        호출 = self.역["둘 다 성공"]["호출"]
+        for 이름, c in 호출.items():
+            with self.subTest(호출=이름):
+                self.assertEqual(c["x"], 127.0557, "x 는 경도여야 합니다")
+                self.assertEqual(c["y"], 37.5445, "y 는 위도여야 합니다")
+
+    def test_법정동코드를_고른다(self):
+        """행정동(H)과 법정동(B)이 함께 온다. 실거래가 지역코드는 **법정동**에서 나온다."""
+        got = self.역["둘 다 성공"]["결과"]
+        self.assertEqual(got["법정동코드"], "1121510300")
+        self.assertEqual(got["우편번호"], "04998")
+
+    def test_한쪽이_실패해도_다른_쪽은_살린다(self):
+        """주소와 법정동코드는 다른 호출이다. 한쪽 실패로 전부 버리지 않는다."""
+        주소실패 = self.역["주소만 실패"]["결과"]
+        self.assertEqual(주소실패["주소"], "")
+        self.assertEqual(주소실패["법정동코드"], "1121510300")
+        코드실패 = self.역["코드만 실패"]["결과"]
+        self.assertTrue(코드실패["주소"])
+        self.assertEqual(코드실패["법정동코드"], "")
+
+    def test_마커를_끌_수_있고_옮긴_좌표를_알려_준다(self):
+        self.assertTrue(self.지도["끌수있음"], "마커가 draggable 이 아닙니다")
+        self.assertEqual(self.지도["마커끌기"], {"위도": 37.54, "경도": 127.09})
+
+    def test_지도를_정리한다(self):
+        """화면을 다시 그릴 때마다 지도 인스턴스가 쌓이면 안 된다."""
+        self.assertTrue(self.지도["정리됨"])
+
+
+class TestMapWiring(unittest.TestCase):
+    """옮긴 좌표가 주소를 조용히 갈아 끼우지 않는가."""
+
+    def test_주소는_사람이_누를_때만_바뀐다(self):
+        """주소·우편번호·법정동코드는 그 자리의 신원이고 실거래가 지역코드까지 이어진다.
+        마커를 끌었다고 자동으로 바꾸면, 사람이 모르는 사이에 다른 동의 시세와
+        대조하게 된다."""
+        src = (Path(__file__).resolve().parents[2] / "input" / "js" / "app.js") \
+            .read_text(encoding="utf-8")
+        # dragend 처리에서 바꾸는 것은 좌표뿐
+        블록 = src.split("PLACE.showMap(", 1)[1].split("}).then(", 1)[0]
+        self.assertIn("s3.위도", 블록)
+        self.assertIn("s3.경도", 블록)
+        for 신원 in ("s3.주소", "s3.우편번호", "s3.법정동코드"):
+            self.assertNotIn(신원, 블록, f"{신원} 를 끌기만 해도 바꾸고 있습니다")
+        # 대신 사람이 누르는 버튼이 있어야 한다
+        self.assertIn("driftok", src)
+        self.assertIn("주소도 이 자리로 바꾸기", src)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

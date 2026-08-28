@@ -140,6 +140,94 @@ const PLACE = (() => {
     }));
   }
 
+  /* ── 지도 ─────────────────────────────────────────
+     검색 결과가 엉뚱한 곳을 짚어도 좌표만 봐서는 알 수 없다. 숫자 두 개가 맞는지
+     사람이 판단할 방법이 없기 때문이다. 지도에 찍어 두면 '아 여기가 아닌데' 가
+     한눈에 보이고, 마커를 끌어 정확한 자리로 옮길 수 있다.
+
+     끌어서 옮기면 **좌표만** 바꾼다. 주소·우편번호·법정동코드는 그 자리의 신원이고
+     실거래가 지역코드까지 이어지므로, 조용히 갈아 끼우지 않는다. 옮긴 자리의 주소가
+     달라졌으면 그 사실을 알리고 사람이 누를 때만 바꾼다. */
+  const MAP_LEVEL = 3;   // 1이 가장 확대. 3이면 건물 몇 채가 보인다
+
+  function showMap(container, center, onMove) {
+    if (!container) return Promise.reject(new Error('지도를 그릴 자리가 없습니다'));
+    const lat = Number(center && center.위도), lon = Number(center && center.경도);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+      return Promise.reject(new Error('좌표가 없어 지도를 그릴 수 없습니다'));
+    }
+    return loadKakao().then(() => {
+      const kakao = window.kakao;
+      const at = new kakao.maps.LatLng(lat, lon);
+      const map = new kakao.maps.Map(container, { center: at, level: MAP_LEVEL });
+      const marker = new kakao.maps.Marker({ position: at, draggable: true, map: map });
+
+      if (typeof onMove === 'function') {
+        kakao.maps.event.addListener(marker, 'dragend', () => {
+          const p = marker.getPosition();
+          onMove({ 위도: p.getLat(), 경도: p.getLng() });
+        });
+        // 지도를 눌러도 마커가 따라간다 — 마커를 정확히 잡기 어려운 경우가 많다
+        kakao.maps.event.addListener(map, 'click', e => {
+          marker.setPosition(e.latLng);
+          onMove({ 위도: e.latLng.getLat(), 경도: e.latLng.getLng() });
+        });
+      }
+
+      return {
+        moveTo(위도, 경도) {
+          const p = new kakao.maps.LatLng(Number(위도), Number(경도));
+          marker.setPosition(p);
+          map.setCenter(p);
+        },
+        // 화면을 다시 그릴 때 지도 인스턴스가 남지 않게 한다
+        destroy() {
+          try { marker.setMap(null); } catch (e) { /* 이미 정리됨 */ }
+          if (container) container.innerHTML = '';
+        },
+      };
+    });
+  }
+
+  /* 좌표 → 그 자리의 주소·행정코드. 마커를 옮겼을 때 '어디로 옮겼는지' 를 말해 준다.
+     coord2Address 는 주소를, coord2RegionCode 는 법정동코드를 준다 — 둘은 다른
+     호출이다. 한쪽만 있는 SDK 판이어도 있는 것만 쓰고 넘어간다. */
+  function whereIs(위도, 경도) {
+    const lat = Number(위도), lon = Number(경도);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+      return Promise.reject(new Error('좌표가 아닙니다'));
+    }
+    return loadKakao().then(() => new Promise(resolve => {
+      const kakao = window.kakao;
+      const geo = new kakao.maps.services.Geocoder();
+      const { OK } = statusOf(kakao);
+      const out = { 주소: '', 지번: '', 우편번호: '', 법정동코드: '' };
+      let 남음 = 2;
+      const 하나끝 = () => { if (--남음 === 0) resolve(out); };
+
+      if (typeof geo.coord2Address === 'function') {
+        geo.coord2Address(lon, lat, (res, status) => {   // x=경도, y=위도 순서다
+          const r = (status === OK && res && res[0]) || null;
+          if (r) {
+            out.주소 = (r.road_address && r.road_address.address_name) ||
+                     (r.address && r.address.address_name) || '';
+            out.지번 = (r.address && r.address.address_name) || '';
+            out.우편번호 = (r.road_address && r.road_address.zone_no) || '';
+          }
+          하나끝();
+        });
+      } else { 하나끝(); }
+
+      if (typeof geo.coord2RegionCode === 'function') {
+        geo.coord2RegionCode(lon, lat, (res, status) => {
+          const 법정 = (status === OK && res || []).filter(r => r.region_type === 'B')[0];
+          if (법정) out.법정동코드 = 법정.code || '';
+          하나끝();
+        });
+      } else { 하나끝(); }
+    }));
+  }
+
   /* ── 주소만 (키 없음) ─────────────────────────────── */
   // 다음 우편번호 서비스는 키가 필요 없다. 대신 좌표는 주지 않는다.
   function openPostcode() {
@@ -225,7 +313,8 @@ const PLACE = (() => {
     return SERVICES.map(s => ({ id: s.id, 이름: s.이름, 설명: s.설명, href: s.url(q) }));
   }
 
-  return { getKey, setKey, hasKey, search, statusOf, TIMEOUT_MS, openPostcode, parseCoords,
+  return { getKey, setKey, hasKey, search, statusOf, TIMEOUT_MS,
+           showMap, whereIs, MAP_LEVEL, openPostcode, parseCoords,
            suggestName, lawdCode, links, SERVICES };
 })();
 
