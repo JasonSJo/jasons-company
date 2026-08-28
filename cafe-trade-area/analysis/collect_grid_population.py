@@ -43,6 +43,9 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+# 구역코드→면적·중심점 표는 유동인구 쪽과 같은 형식이다. 구현을 둘로 두면
+# 한쪽만 고쳐져 같은 CSV 가 두 도구에서 다르게 읽히는 일이 생긴다.
+from collect_carrier_flow import load_areas
 from common import read_csv, to_f
 
 ROOT = Path(__file__).resolve().parent
@@ -327,6 +330,100 @@ def probe(key: str, secret: str, auth_url: str, adm_cd: str, year: str,
     return 0 if 작동 else 1
 
 
+def kosis_fetch(api_key: str, org_id: str, tbl_id: str, itm_id: str,
+                obj_l1: str, prd_se: str, prd_de: str,
+                url: str = KOSIS_DATA_URL) -> tuple[list, str]:
+    """KOSIS 자료 조회. 표를 고르는 것은 사람이 하고(--probe), 여기서는 받아만 온다.
+
+    통계표마다 항목(itmId)과 분류(objL1)가 달라 상수로 박을 수 없다. 그래서 전부
+    인자로 받는다 — probe 로 표를 고른 뒤 플래그만 바꿔 부르면 코드는 그대로다.
+    """
+    q = urllib.parse.urlencode({
+        "method": "getList", "apiKey": api_key, "format": "json", "jsonVD": "Y",
+        "orgId": org_id, "tblId": tbl_id,
+        "itmId": itm_id or "ALL", "objL1": obj_l1 or "ALL",
+        "prdSe": prd_se, **({"startPrdDe": prd_de, "endPrdDe": prd_de} if prd_de
+                            else {"newEstPrdCnt": "1"}),
+    })
+    try:
+        with urllib.request.urlopen(f"{url}?{q}", timeout=30,
+                                    context=ssl.create_default_context()) as r:
+            body = r.read().decode("utf-8", "replace")
+    except urllib.error.HTTPError as e:
+        return [], f"HTTP {e.code}"
+    except OSError as e:
+        return [], f"네트워크 오류: {e}"
+    try:
+        doc = json.loads(body)
+    except ValueError as e:
+        return [], f"JSON 파싱 실패: {e} · 응답 앞부분: {body[:300]}"
+    # KOSIS 는 오류도 HTTP 200 + JSON 으로 보낸다
+    if isinstance(doc, dict) and doc.get("errMsg"):
+        return [], f"{doc.get('err')} {doc.get('errMsg')}"
+    rows = doc if isinstance(doc, list) else doc.get("result") or []
+    if not rows:
+        return [], f"자료가 비었습니다: {json.dumps(doc, ensure_ascii=False)[:300]}"
+    return rows, ""
+
+
+# KOSIS 응답의 흔한 표기. 통계표마다 다르므로 여러 개를 함께 받는다.
+KOSIS_FIELDS = {
+    "코드": ["C1", "C1_OBJ_NM_ENG", "objL1", "C1_OBJ_NM"],
+    "이름": ["C1_NM", "C1_OBJ_NM", "PRD_DE"],
+    "값": ["DT", "dt", "값"],
+    "단위": ["UNIT_NM", "unit"],
+    "시점": ["PRD_DE", "prdDe"],
+}
+
+
+def kosis_to_cells(rows: list, areas: dict, 항목: str) -> tuple[list[dict], dict]:
+    """KOSIS 행 → 격자인구.csv 행. 구역 면적·중심점 표(--areas)가 있어야 한다.
+
+    KOSIS 는 행정구역 코드와 값만 주고 좌표도 면적도 주지 않는다. M2 는 둘 다
+    필요하다(중심점으로 P10 과 겹치는지 보고, 면적으로 안분한다). 그래서 표가 없는
+    구역은 행을 만들지 않는다 — 면적을 추측해 나눈 값은 근거가 아니다.
+
+    항목 은 이 표가 무엇을 담는지 — "세대수" 또는 "직장인구".
+    """
+    out, 버림 = [], {"코드없음": 0, "값없음": 0, "면적없음": 0}
+    for r in rows:
+        if not isinstance(r, dict):
+            continue
+        code = pick(r, KOSIS_FIELDS["코드"])
+        if not code:
+            버림["코드없음"] += 1
+            continue
+        n = to_f(pick(r, KOSIS_FIELDS["값"]))
+        if n <= 0:
+            버림["값없음"] += 1
+            continue
+        info = areas.get(code) or areas.get(code[:5]) or {}
+        면적, lat, lon = info.get("면적_m2", 0), info.get("위도", 0), info.get("경도", 0)
+        if not (면적 > 0 and lat and lon):
+            버림["면적없음"] += 1
+            continue
+        out.append({
+            "격자ID": f"KOSIS:{code}",
+            "중심위도": round(lat, 6), "중심경도": round(lon, 6),
+            # 정사각형으로 환산한 한 변. M2 가 이 값으로 겹친 면적을 잰다.
+            # 300m 를 넘으면 M2 가 '격자가 아니다' 경고를 남긴다.
+            "한변_m": round(면적 ** 0.5, 1),
+            "세대수": round(n, 1) if 항목 == "세대수" else 0,
+            "직장인구": round(n, 1) if 항목 == "직장인구" else 0,
+        })
+    return out, 버림
+
+
+def merge_cells(a: list[dict], b: list[dict]) -> list[dict]:
+    """같은 구역의 세대수 표와 직장인구 표를 한 행으로 합친다."""
+    by = {}
+    for r in a + b:
+        cur = by.setdefault(r["격자ID"], dict(r))
+        cur["세대수"] = max(to_f(cur.get("세대수")), to_f(r.get("세대수")))
+        cur["직장인구"] = max(to_f(cur.get("직장인구")), to_f(r.get("직장인구")))
+    return list(by.values())
+
+
 def kosis_probe(api_key: str) -> int:
     """KOSIS 통계표 목록을 훑는다.
 
@@ -394,6 +491,72 @@ def kosis_probe(api_key: str) -> int:
     return 0 if 찾음 else 1
 
 
+def kosis_run(args, out: Path) -> int:
+    """KOSIS 에서 세대수·종사자수를 받아 격자인구.csv 를 만든다."""
+    api_key = os.environ.get("KOSIS_API_KEY", "").strip()
+    areas = load_areas(args.areas)
+
+    if not args.live:
+        write_rows([], out)
+        print("dry-run — KOSIS 를 호출하지 않았습니다.")
+        print(f"  키 KOSIS_API_KEY {'있음' if api_key else '없음'} · 비용 무료")
+        print(f"  구역 면적표 {len(areas)}건" if areas
+              else "  구역 면적표 없음 — --areas 로 구역코드→면적·중심점 표가 필요합니다")
+        print("  쓸 통계표를 먼저 고르십시오:")
+        print(f"    KOSIS_API_KEY=... python3 {Path(__file__).name} --source kosis --probe")
+        print("  고른 뒤:")
+        print(f"    KOSIS_API_KEY=... python3 {Path(__file__).name} --source kosis --live \\")
+        print("        --areas 행정구역.csv --tbl-id-household DT_xxx --tbl-id-worker DT_yyy")
+        print("  ※ dry-run 은 인구 수를 만들어 내지 않습니다.")
+        print(f"  → {out} (빈 표)")
+        return 0
+
+    if not api_key:
+        print("KOSIS_API_KEY 가 필요합니다. https://kosis.kr/openapi/index/index.jsp",
+              file=sys.stderr)
+        return 2
+    if not (args.tbl_id_household or args.tbl_id_worker):
+        print("--tbl-id-household 나 --tbl-id-worker 중 하나는 있어야 합니다.",
+              file=sys.stderr)
+        print("  --probe 로 통계표를 먼저 고르십시오.", file=sys.stderr)
+        return 2
+    if not areas:
+        print("--areas 로 구역코드→면적·중심점 표가 필요합니다.", file=sys.stderr)
+        print("  KOSIS 는 행정구역 코드와 값만 주고 좌표도 면적도 주지 않습니다. "
+              "M2 는 둘 다 필요합니다(중심점으로 P10 과 겹치는지 보고, 면적으로 안분).",
+              file=sys.stderr)
+        return 2
+
+    묶음 = []
+    for tbl, 항목 in ((args.tbl_id_household, "세대수"), (args.tbl_id_worker, "직장인구")):
+        if not tbl:
+            continue
+        rows, err = kosis_fetch(api_key, args.org_id, tbl, args.itm_id,
+                                args.obj_l1, args.prd_se, args.prd_de)
+        if err:
+            print(f"  ✕ {항목} ({tbl}) — {err}", file=sys.stderr)
+            continue
+        cells, 버림 = kosis_to_cells(rows, areas, 항목)
+        print(f"  ✓ {항목} ({tbl}) — 받은 행 {len(rows)} · 만든 행 {len(cells)}")
+        for k, v in 버림.items():
+            if v:
+                print(f"      버림 {k} {v}건")
+        묶음.append(cells)
+
+    if not 묶음:
+        print("한 표도 받지 못했습니다.", file=sys.stderr)
+        return 1
+    cells = merge_cells(묶음[0], 묶음[1] if len(묶음) > 1 else [])
+    write_rows(cells, out)
+    큰것 = [c for c in cells if to_f(c["한변_m"]) > 300]
+    print(f"KOSIS 격자인구 — 구역 {len(cells)}개 → {out}")
+    if 큰것:
+        print(f"  🙋 {len(큰것)}개 구역이 한 변 300m 를 넘습니다. M2 가 P10 과 겹친 "
+              f"면적비로 안분하면서 '격자가 아니다' 경고를 남깁니다 — 구역 안에서 "
+              f"사람이 고르게 산다고 가정한 값입니다.")
+    return 0
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="통계청 SGIS 격자 인구를 받는다 (전국)")
     ap.add_argument("--sites", default=str(ROOT / "후보지.example.csv"))
@@ -407,6 +570,15 @@ def main(argv=None) -> int:
                          "답하는지 그대로 출력한다. 이 출력이 연동을 확정하는 근거다")
     ap.add_argument("--adm-cd", default="11", help="--probe 에서 쓸 행정구역코드 (기본 11 = 서울)")
     ap.add_argument("--year", default="2023", help="--probe 에서 쓸 기준연도")
+    # KOSIS 조회 — probe 로 표를 고른 뒤 여기에 넣는다. 코드를 고칠 필요가 없다.
+    ap.add_argument("--areas", help="구역코드→면적·중심점 표 (CSV). KOSIS 조회에 필요하다")
+    ap.add_argument("--org-id", default="101", help="KOSIS 기관코드 (통계청=101)")
+    ap.add_argument("--tbl-id-household", default="", help="세대수 통계표 ID")
+    ap.add_argument("--tbl-id-worker", default="", help="종사자수 통계표 ID")
+    ap.add_argument("--itm-id", default="ALL", help="KOSIS 항목 ID")
+    ap.add_argument("--obj-l1", default="ALL", help="KOSIS 분류(행정구역) — 기본 전체")
+    ap.add_argument("--prd-se", default="Y", help="수록주기 (Y=연간)")
+    ap.add_argument("--prd-de", default="", help="기준시점 (비우면 최신 1건)")
     ap.add_argument("--auth-url", default=AUTH_URL)
     ap.add_argument("--data-url", default=DATA_URL)
     ap.add_argument("--out", default=str(ROOT / "output" / "격자인구.csv"))
@@ -429,6 +601,9 @@ def main(argv=None) -> int:
             return kosis_probe(os.environ.get("KOSIS_API_KEY", "").strip())
         return probe(key, secret, args.auth_url, args.adm_cd, args.year,
                      boxes[0] if boxes else None)
+
+    if args.source == "kosis":
+        return kosis_run(args, out)
 
     if not args.live:
         write_rows([], out)

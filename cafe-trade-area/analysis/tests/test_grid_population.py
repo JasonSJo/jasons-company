@@ -363,5 +363,126 @@ class TestKosis(unittest.TestCase):
         self.assertIn("인증키가 유효하지 않습니다", buf.getvalue())
 
 
+class TestKosisFetch(unittest.TestCase):
+    """표를 고른 뒤의 경로. probe 출력만 있으면 **코드를 고치지 않고** 플래그로 돈다."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="kosis-"))
+        import csv
+        with (self.tmp / "areas.csv").open("w", encoding="utf-8-sig", newline="") as f:
+            w = csv.DictWriter(f, fieldnames=["구역코드", "면적_m2", "위도", "경도"])
+            w.writeheader()
+            w.writerow({"구역코드": "11200", "면적_m2": "16850000",
+                        "위도": "37.5634", "경도": "127.0371"})
+        self.원래 = urllib.request.urlopen
+
+        class R:
+            def __init__(s, b):
+                s._b = b.encode()
+                s.status = 200
+            def read(s):
+                return s._b
+            def __enter__(s):
+                return s
+            def __exit__(s, *a):
+                return False
+
+        def fake(url, timeout=None, context=None):
+            if "DT_HOUSE" in url:
+                return R(json.dumps([{"C1": "11200", "DT": "140000"}]))
+            if "DT_WORK" in url:
+                return R(json.dumps([{"C1": "11200", "DT": "210000"}]))
+            if "DT_ERR" in url:
+                return R(json.dumps({"err": "20", "errMsg": "인증키 오류"},
+                                    ensure_ascii=False))
+            raise urllib.error.HTTPError(url, 404, "nf", None, None)
+
+        urllib.request.urlopen = fake
+        import os
+        self.키원래 = os.environ.get("KOSIS_API_KEY")
+        os.environ["KOSIS_API_KEY"] = "KEY"
+
+    def tearDown(self):
+        import os
+        urllib.request.urlopen = self.원래
+        if self.키원래 is None:
+            os.environ.pop("KOSIS_API_KEY", None)
+        else:
+            os.environ["KOSIS_API_KEY"] = self.키원래
+
+    def 실행(self, extra):
+        out = self.tmp / "out.csv"
+        buf, old = io.StringIO(), sys.stdout
+        sys.stdout = buf
+        try:
+            rc = GP.main(["--source", "kosis", "--live",
+                          "--areas", str(self.tmp / "areas.csv"),
+                          "--out", str(out)] + extra)
+        finally:
+            sys.stdout = old
+        return rc, out, buf.getvalue()
+
+    def test_두_표를_한_행으로_합친다(self):
+        """세대수 표와 종사자수 표는 따로 온다. 구역이 같으면 한 칸이어야 한다."""
+        rc, out, _ = self.실행(["--tbl-id-household", "DT_HOUSE",
+                              "--tbl-id-worker", "DT_WORK"])
+        self.assertEqual(rc, 0)
+        rows = read_csv(out)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(float(rows[0]["세대수"]), 140000.0)
+        self.assertEqual(float(rows[0]["직장인구"]), 210000.0)
+
+    def test_구역_면적에서_한변을_환산한다(self):
+        """M2 는 정사각형 한 변으로 겹친 면적을 잰다. 성동구 16.85km² → 약 4.1km."""
+        rc, out, _ = self.실행(["--tbl-id-household", "DT_HOUSE"])
+        한변 = float(read_csv(out)[0]["한변_m"])
+        self.assertAlmostEqual(한변, 16850000 ** 0.5, delta=1.0)
+        self.assertGreater(한변, M2.굵은격자_m, "M2 가 경고할 만큼 큰 구역이어야 합니다")
+
+    def test_M2_까지_도달하고_안분_경고가_난다(self):
+        rc, out, _ = self.실행(["--tbl-id-household", "DT_HOUSE",
+                              "--tbl-id-worker", "DT_WORK"])
+        cells = read_csv(out)
+        lat0, lon0 = 37.5634, 127.0371
+        p10 = [geo.project(lat0, lon0, lat0 + dy, lon0 + dx)
+               for dy, dx in [(0.006, -0.008), (0.006, 0.008),
+                              (-0.006, 0.008), (-0.006, -0.008)]]
+        got = M2.demand({"위도": lat0, "경도": lon0, "P10": p10, "P5": p10},
+                        cells, [], "A")
+        self.assertGreater(got["H"], 0)
+        self.assertGreater(got["W"], 0)
+        self.assertLess(got["H"], 140000 * 0.5, "구역 인구가 거의 그대로 들어왔습니다")
+        self.assertIn("격자가 아닙니다", " ".join(got["경고"]))
+
+    def test_면적표가_없으면_거절한다(self):
+        """KOSIS 는 좌표도 면적도 주지 않는다. 추측해 나눈 값은 근거가 아니다."""
+        out = self.tmp / "o2.csv"
+        buf, old = io.StringIO(), sys.stderr
+        sys.stderr = buf
+        try:
+            rc = GP.main(["--source", "kosis", "--live",
+                          "--tbl-id-household", "DT_HOUSE", "--out", str(out)])
+        finally:
+            sys.stderr = old
+        self.assertEqual(rc, 2)
+        self.assertIn("--areas", buf.getvalue())
+
+    def test_표를_안_고르면_probe_로_보낸다(self):
+        out = self.tmp / "o3.csv"
+        buf, old = io.StringIO(), sys.stderr
+        sys.stderr = buf
+        try:
+            rc = GP.main(["--source", "kosis", "--live",
+                          "--areas", str(self.tmp / "areas.csv"), "--out", str(out)])
+        finally:
+            sys.stderr = old
+        self.assertEqual(rc, 2)
+        self.assertIn("--probe", buf.getvalue())
+
+    def test_오류_응답을_자료로_착각하지_않는다(self):
+        rc, out, 말 = self.실행(["--tbl-id-household", "DT_ERR"])
+        self.assertEqual(rc, 1)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
