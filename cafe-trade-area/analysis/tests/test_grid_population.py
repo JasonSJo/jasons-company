@@ -207,10 +207,16 @@ class TestProbe(unittest.TestCase):
         self.assertIn("HTTP 404", 말, "실패한 후보도 보여 줘야 합니다")
 
     def test_인증이_실패하면_거기서_멈춘다(self):
+        """두 호스트 다 눌러 보고, 그래도 안 되면 조회로 넘어가지 않는다."""
         self.응답 = {GP.AUTH_URL: {"result": {}}}
         rc, 말 = self.실행()
         self.assertEqual(rc, 1)
-        self.assertIn("토큰 발급 실패", 말)
+        self.assertIn("토큰을 받지 못했습니다", 말)
+        # 두 호스트를 모두 시도했는지
+        for h in GP.SGIS_HOSTS:
+            self.assertIn(h, 말, h)
+        # 인증이 안 됐는데 자료를 부르지 않는다
+        self.assertNotIn("household.json", 말)
 
     def test_하나도_답하지_않으면_0_이_아닌_코드(self):
         self.응답 = {GP.AUTH_URL: {"result": {"accessToken": "T"}}}
