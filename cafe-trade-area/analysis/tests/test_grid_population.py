@@ -228,5 +228,140 @@ class TestConfirmedEndpoints(unittest.TestCase):
         self.assertIn("company", urls)
 
 
+class TestCoarseCellWarning(unittest.TestCase):
+    """무료로 열린 전국 인구 자료(SGIS 통계·KOSIS)는 대부분 행정구역 단위다.
+    그걸 격자인구.csv 에 그대로 넣으면 M2 가 균등분포로 안분하는데, 유동인구 쪽은
+    같은 안분을 할 때 크게 경고하면서 여기는 조용했다."""
+
+    def 상권(self, 반경_deg=0.003):
+        lat0, lon0 = 37.5445, 127.0557
+        p10 = [geo.project(lat0, lon0, lat0 + dy, lon0 + dx)
+               for dy, dx in [(반경_deg, -반경_deg), (반경_deg, 반경_deg),
+                              (-반경_deg, 반경_deg), (-반경_deg, -반경_deg)]]
+        return {"위도": lat0, "경도": lon0, "P10": p10, "P5": p10}
+
+    def test_100m_격자는_조용하다(self):
+        cells = [{"격자ID": "G1", "중심위도": 37.5445, "중심경도": 127.0557,
+                  "한변_m": "100", "세대수": "8", "직장인구": "14"}]
+        got = M2.residents_workers(self.상권(), cells)
+        self.assertEqual(got["굵은칸"], 0)
+        self.assertEqual(got["경고"], [])
+
+    def test_행정구역_단위는_경고한다(self):
+        cells = [{"격자ID": "A1", "중심위도": 37.5445, "중심경도": 127.0557,
+                  "한변_m": "1225", "세대수": "22000", "직장인구": "31000"}]
+        got = M2.residents_workers(self.상권(), cells)
+        self.assertEqual(got["굵은칸"], 1)
+        말 = " ".join(got["경고"])
+        self.assertIn("격자가 아닙니다", 말)
+        self.assertIn("고르게 산다고 가정", 말)
+
+    def test_큰_구역은_면적비로_깎인다(self):
+        """P10 보다 큰 구역을 통째로 더하면 배후 수요가 몇 배로 부푼다."""
+        작은상권 = self.상권(0.001)      # P10 을 좁게
+        cells = [{"격자ID": "A1", "중심위도": 37.5445, "중심경도": 127.0557,
+                  "한변_m": "1225", "세대수": "22000", "직장인구": "0"}]
+        got = M2.residents_workers(작은상권, cells)
+        self.assertLess(got["H"], 22000 * 0.5,
+                        "행정동 인구가 거의 그대로 들어왔습니다 — 면적 가중이 안 먹었습니다")
+        self.assertGreater(got["H"], 0)
+
+    def test_배후_경고가_유동_경고에_먹히지_않는다(self):
+        """demand() 가 dict 를 그냥 펼치면 뒤엣것이 앞엣것의 '경고' 를 덮어쓴다.
+        경고가 사라지는 버그는 값이 틀리는 버그보다 알아채기 어렵다."""
+        cells = [{"격자ID": "A1", "중심위도": 37.5445, "중심경도": 127.0557,
+                  "한변_m": "1225", "세대수": "22000", "직장인구": "31000"}]
+        points = [{"지점ID": "p", "위도": "37.5445", "경도": "127.0557",
+                   "도로변": "A", "시간대": M2.AM, "인원": "300", "출처": "실측"}]
+        got = M2.demand(self.상권(), cells, points, "A")
+        말 = " ".join(got["경고"])
+        self.assertIn("격자가 아닙니다", 말, "배후 인구 경고가 사라졌습니다")
+
+    def test_칸이_하나도_없으면_말해_준다(self):
+        got = M2.residents_workers(self.상권(), [])
+        self.assertEqual(got["H"], 0)
+        self.assertIn("하나도 없습니다", " ".join(got["경고"]))
+
+
+class TestKosis(unittest.TestCase):
+    """KOSIS 는 호출이 아니라 **어느 통계표를 쓸지** 고르는 데서 막힌다."""
+
+    def test_키가_없으면_발급처를_알려_준다(self):
+        buf, old = io.StringIO(), sys.stderr
+        sys.stderr = buf
+        try:
+            rc = GP.kosis_probe("")
+        finally:
+            sys.stderr = old
+        self.assertEqual(rc, 2)
+        self.assertIn("kosis.kr/openapi", buf.getvalue())
+
+    def test_목록을_받으면_통계표를_보여_준다(self):
+        원래 = urllib.request.urlopen
+
+        class FakeResp:
+            def __init__(s, body):
+                s._b = body.encode()
+                s.status = 200
+            def read(s):
+                return s._b
+            def __enter__(s):
+                return s
+            def __exit__(s, *a):
+                return False
+
+        목록 = [{"ORG_ID": "101", "TBL_ID": "DT_1B040A3",
+                "TBL_NM": "주민등록인구현황", "LIST_ID": "A_1"}]
+
+        def fake(url, timeout=None, context=None):
+            if url.split("?")[0] == GP.KOSIS_LIST_URL:
+                return FakeResp(json.dumps(목록, ensure_ascii=False))
+            raise urllib.error.HTTPError(url, 404, "nf", None, None)
+
+        urllib.request.urlopen = fake
+        buf, old = io.StringIO(), sys.stdout
+        sys.stdout = buf
+        try:
+            rc = GP.kosis_probe("KEY")
+        finally:
+            sys.stdout = old
+            urllib.request.urlopen = 원래
+        말 = buf.getvalue()
+        self.assertEqual(rc, 0)
+        self.assertIn("DT_1B040A3", 말)
+        self.assertIn("주민등록인구현황", 말)
+        self.assertIn("ORG_ID", 말)
+
+    def test_오류_응답을_목록으로_착각하지_않는다(self):
+        """KOSIS 는 오류도 HTTP 200 + JSON 으로 보낸다."""
+        원래 = urllib.request.urlopen
+
+        class FakeResp:
+            def __init__(s, body):
+                s._b = body.encode()
+                s.status = 200
+            def read(s):
+                return s._b
+            def __enter__(s):
+                return s
+            def __exit__(s, *a):
+                return False
+
+        def fake(url, timeout=None, context=None):
+            return FakeResp(json.dumps({"err": "20", "errMsg": "인증키가 유효하지 않습니다"},
+                                       ensure_ascii=False))
+
+        urllib.request.urlopen = fake
+        buf, old = io.StringIO(), sys.stdout
+        sys.stdout = buf
+        try:
+            rc = GP.kosis_probe("BAD")
+        finally:
+            sys.stdout = old
+            urllib.request.urlopen = 원래
+        self.assertEqual(rc, 1)
+        self.assertIn("인증키가 유효하지 않습니다", buf.getvalue())
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

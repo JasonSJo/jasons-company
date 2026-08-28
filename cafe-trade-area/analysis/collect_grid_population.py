@@ -57,6 +57,20 @@ AUTH_URL = "https://sgisapi.kostat.go.kr/OpenAPI3/auth/authentication.json"
 # 실제 키를 써서 어느 것이 답하는지 한 번에 알아본다.
 DATA_URL = "https://sgisapi.kostat.go.kr/OpenAPI3/stats/household.json"
 
+# ── KOSIS (국가통계포털) ──────────────────────────────
+# SGIS 와 같은 자리를 채우는 두 번째 길. 전국·무료이고 주민등록인구와
+# 전국사업체조사(종사자수)가 있다. 어려운 것은 호출이 아니라 **어느 통계표(tblId)를
+# 쓸지 고르는 것**이라, 목록 조회를 probe 에 넣어 눈으로 고르게 한다.
+KOSIS_LIST_URL = "https://kosis.kr/openapi/statisticsList.do"
+KOSIS_DATA_URL = "https://kosis.kr/openapi/statisticsData.do"
+
+# 목록에서 훑어볼 분류. vwCd=MT_ZTITLE 는 주제별 목록이다.
+KOSIS_LIST_PROBES = [
+    ("주제별 최상위", {"vwCd": "MT_ZTITLE", "parentListId": "A"}),
+    ("인구·가구", {"vwCd": "MT_ZTITLE", "parentListId": "A_1"}),
+    ("사업체", {"vwCd": "MT_ZTITLE", "parentListId": "F_29"}),
+]
+
 CANDIDATES = [
     ("가구(행정동)", "https://sgisapi.kostat.go.kr/OpenAPI3/stats/household.json",
      "adm_cd", "household_cnt 세대수"),
@@ -313,12 +327,81 @@ def probe(key: str, secret: str, auth_url: str, adm_cd: str, year: str,
     return 0 if 작동 else 1
 
 
+def kosis_probe(api_key: str) -> int:
+    """KOSIS 통계표 목록을 훑는다.
+
+    KOSIS 는 호출 자체는 쉽지만 **어느 통계표를 쓸지** 고르는 데서 막힌다. 표가
+    수만 개이고 이름이 비슷해서, 코드에 tblId 를 박아 두면 그게 맞는 표인지 아무도
+    확인하지 못한다. 그래서 목록을 그대로 보여 주고 사람이 고르게 한다.
+    """
+    if not api_key:
+        print("KOSIS_API_KEY 가 필요합니다.", file=sys.stderr)
+        print("  발급: https://kosis.kr/openapi/index/index.jsp (무료)", file=sys.stderr)
+        return 2
+
+    print("KOSIS 통계표 목록 조회")
+    print(f"  {KOSIS_LIST_URL}")
+    찾음 = 0
+    for 이름, extra in KOSIS_LIST_PROBES:
+        q = urllib.parse.urlencode({
+            "method": "getList", "apiKey": api_key,
+            "format": "json", "jsonVD": "Y", **extra,
+        })
+        try:
+            with urllib.request.urlopen(f"{KOSIS_LIST_URL}?{q}", timeout=25,
+                                        context=ssl.create_default_context()) as r:
+                body = r.read().decode("utf-8", "replace")
+        except urllib.error.HTTPError as e:
+            print(f"\n✕ {이름} — HTTP {e.code}")
+            continue
+        except OSError as e:
+            print(f"\n✕ {이름} — {type(e).__name__}: {e}")
+            continue
+
+        try:
+            doc = json.loads(body)
+        except ValueError:
+            print(f"\n✕ {이름} — JSON 이 아님")
+            print(f"   응답 앞부분 {body[:300]}")
+            continue
+
+        # KOSIS 는 오류도 200 + JSON 으로 보낸다
+        if isinstance(doc, dict) and doc.get("errMsg"):
+            print(f"\n✕ {이름} — {doc.get('err')} {doc.get('errMsg')}")
+            continue
+        items = doc if isinstance(doc, list) else doc.get("result") or []
+        if not items:
+            print(f"\n✕ {이름} — 목록이 비었습니다  {json.dumps(doc, ensure_ascii=False)[:200]}")
+            continue
+
+        찾음 += 1
+        print(f"\n✓ {이름} — {len(items)}건  (파라미터 {extra})")
+        for it in items[:12]:
+            if not isinstance(it, dict):
+                continue
+            print("   " + " · ".join(
+                f"{k}={it[k]}" for k in ("ORG_ID", "TBL_ID", "LIST_ID", "TBL_NM", "LIST_NM")
+                if k in it))
+
+    print("\n" + "─" * 60)
+    if 찾음:
+        print("쓸 통계표를 고르십시오. H 는 세대수(주민등록 또는 인구총조사 가구),")
+        print("W 는 전국사업체조사의 종사자수입니다.")
+        print("고른 표의 ORG_ID 와 TBL_ID 를 알려 주시면 조회까지 이어 놓겠습니다.")
+        print(f"  자료 조회는 {KOSIS_DATA_URL} 에 orgId·tblId·objL1=ALL·itmId·prdSe 로 부릅니다.")
+    else:
+        print("목록을 하나도 받지 못했습니다. 키가 승인됐는지 확인하십시오.")
+    return 0 if 찾음 else 1
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="통계청 SGIS 격자 인구를 받는다 (전국)")
     ap.add_argument("--sites", default=str(ROOT / "후보지.example.csv"))
     ap.add_argument("--radius", type=float, default=DEFAULT_RADIUS,
                     help=f"후보지 주변 조회 반경 m (기본 {DEFAULT_RADIUS:g} · P10 을 덮어야 한다)")
     ap.add_argument("--live", action="store_true", help="실제로 호출한다(기본은 dry-run)")
+    ap.add_argument("--source", default="sgis", choices=("sgis", "kosis"),
+                    help="어느 기관에서 받을지. 둘 다 전국·무료이고 같은 자리를 채운다")
     ap.add_argument("--probe", action="store_true",
                     help="키로 인증한 뒤 후보 엔드포인트를 하나씩 눌러 보고 무엇이 "
                          "답하는지 그대로 출력한다. 이 출력이 연동을 확정하는 근거다")
@@ -342,6 +425,8 @@ def main(argv=None) -> int:
     secret = os.environ.get("SGIS_SECRET", "").strip()
 
     if args.probe:
+        if args.source == "kosis":
+            return kosis_probe(os.environ.get("KOSIS_API_KEY", "").strip())
         return probe(key, secret, args.auth_url, args.adm_cd, args.year,
                      boxes[0] if boxes else None)
 

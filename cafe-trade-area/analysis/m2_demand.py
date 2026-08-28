@@ -65,15 +65,50 @@ def _cells_in(poly, cells, lat0, lon0):
             yield row, frac
 
 
+# 격자 한 변이 이보다 크면 '격자' 가 아니라 행정구역 단위로 본다.
+# P10(도보 10분 ≈ 667m) 안에 여러 칸이 들어와야 면적 가중이 뜻을 갖는다.
+굵은격자_m = 300.0
+
+
 def residents_workers(area: dict, cells: list[dict]) -> dict:
-    """P10 안의 배후 주거세대 H 와 직장인구 W."""
+    """P10 안의 배후 주거세대 H 와 직장인구 W.
+
+    격자 칸과 P10 의 겹친 면적비로 가중한다. 여기에는 **균등분포 가정**이 들어 있다 —
+    칸 안에서 사람이 고르게 산다고 보는 것이다. 100m 격자에서는 그 가정이 거의
+    문제가 안 되지만, 행정동처럼 큰 구역을 한 칸으로 넣으면 이야기가 달라진다.
+    행정동은 보통 1~3km² 이고 P10 은 0.35km² 안팎이라, 겹친 면적비가 0.2 근처에서
+    결정되고 **그 안에서 사람이 어디 몰려 있는지는 통째로 사라진다.**
+
+    유동인구 쪽은 같은 안분을 할 때 크게 경고하는데 여기는 조용했다. 무료로 열린
+    전국 인구 자료(SGIS 통계·KOSIS)가 대부분 행정구역 단위라, 그대로 두면 전국
+    후보지에서 그 가정이 말 없이 들어간다. 그래서 같은 기준으로 경고를 남긴다.
+    """
     H = W = 0.0
     used = 0
+    굵은 = 0
+    최대변 = 0.0
     for row, frac in _cells_in(area["P10"], cells, area["위도"], area["경도"]):
         H += to_f(row.get("세대수")) * frac
         W += to_f(row.get("직장인구")) * frac
         used += 1
-    return {"H": H, "W": W, "격자_사용": used}
+        size = to_f(row.get("한변_m"), 100.0) or 100.0
+        최대변 = max(최대변, size)
+        if size > 굵은격자_m:
+            굵은 += 1
+
+    warn = []
+    if 굵은:
+        warn.append(f"⛔ 배후 인구가 격자가 아닙니다 — 한 변 {굵은격자_m:g}m 를 넘는 "
+                    f"구역 {굵은}칸(최대 {최대변:,.0f}m)을 P10 겹친 면적비로 "
+                    f"안분했습니다. 구역 안에서 사람이 고르게 산다고 가정한 값이라, "
+                    f"어디에 몰려 있는지는 반영되지 않았습니다. "
+                    f"H·W 를 그대로 믿지 마십시오 — 100m 격자 자료로 바꾸면 사라지는 "
+                    f"오차입니다.")
+    if not used:
+        warn.append("⚠ P10 안에 배후 인구 칸이 하나도 없습니다 — H·W 가 0 입니다. "
+                    "격자인구.csv 가 이 지역을 덮는지 확인하십시오.")
+    return {"H": H, "W": W, "격자_사용": used, "굵은칸": 굵은,
+            "최대_한변_m": 최대변, "경고": warn}
 
 
 def foot_traffic(area: dict, points: list[dict], site_side: str) -> dict:
@@ -177,11 +212,14 @@ def weekend_night(area: dict, points: list[dict]) -> float:
 def demand(area: dict, cells: list[dict], points: list[dict], site_side: str) -> dict:
     hw = residents_workers(area, cells)
     ft = foot_traffic(area, points, site_side)
-    out = {**hw, **ft, "주말야간": weekend_night(area, points)}
+    # 경고는 **합친다**. dict 를 그냥 펼치면 뒤엣것이 앞엣것의 '경고' 를 덮어써
+    # 배후 인구 쪽 경고가 통째로 사라진다 — 경고가 사라지는 버그는 값이 틀리는
+    # 버그보다 알아채기 어렵다.
+    경고 = list(hw.get("경고", [])) + list(ft.get("경고", []))
     if not cells:
-        out.setdefault("경고", []).append(
-            "⛔ 격자 인구 데이터 없음 — H·W 가 0 입니다. 통계청 SGIS 격자를 넣으십시오.")
-    return out
+        경고.append("⛔ 격자 인구 데이터 없음 — H·W 가 0 입니다. "
+                  "collect_grid_population.py 로 받으십시오(통계청 SGIS · KOSIS).")
+    return {**hw, **ft, "주말야간": weekend_night(area, points), "경고": 경고}
 
 
 def load_cells(path) -> list[dict]:
