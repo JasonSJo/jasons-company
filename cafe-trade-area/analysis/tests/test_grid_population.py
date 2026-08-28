@@ -1106,3 +1106,197 @@ class TestSgisLiveRun(unittest.TestCase):
             sys.stdout = old
         self.assertEqual(rc, 0)
         self.assertEqual(read_csv(out), [])
+
+
+class TestRealSeoulResponse(unittest.TestCase):
+    """실제 SGIS 응답(2026-08, 서울 25개 구)으로 전 구간을 돌린다.
+
+    fixtures/sgis_seoul.json 은 받은 값을 손대지 않고 옮긴 것이다. 여기서 지키는 것:
+
+      · 25개 구 중심점이 실제 서울 위치로 돌아오는가 (UTM-K → 위경도)
+      · 후보지가 자기 구의 인구를 받는가 (법정동코드 앞자리를 쓰면 남의 구가 온다)
+      · 도형이 MultiPolygon 이어도 면적이 나오는가 — 양천구·구로구가 그렇다
+      · 경계와 통계의 이름 표기가 달라도('서울특별시 종로구' vs '종로구') 이어지는가
+
+    ⚠ 다각형 좌표까지는 옮기지 않았다(응답 하나가 수십만 자다). 도형은 실제 응답과
+      같은 **종류**로 두고 넓이 계산 자체는 위의 단위 테스트가 지킨다.
+    """
+
+    실제 = json.loads(
+        (Path(__file__).resolve().parent / "fixtures" / "sgis_seoul.json")
+        .read_text(encoding="utf-8"))
+
+    # 실제로 아는 위치. 변환이 틀어지면 여기서 걸린다.
+    아는곳 = {"종로구": (37.595, 126.977), "강남구": (37.497, 127.063),
+            "도봉구": (37.669, 127.032), "금천구": (37.461, 126.901)}
+
+    def 구들(self):
+        return self.실제["구"]
+
+    def test_25개_구_중심점이_서울_안에_있다(self):
+        for g in self.구들():
+            lat, lon = GP.tm5179_to_wgs84(float(g["x"]), float(g["y"]))
+            with self.subTest(구=g["adm_nm"]):
+                self.assertTrue(37.42 < lat < 37.72, f"{g['adm_nm']} 위도 {lat}")
+                self.assertTrue(126.76 < lon < 127.20, f"{g['adm_nm']} 경도 {lon}")
+
+    def test_아는_구가_아는_자리에_온다(self):
+        by = {g["adm_nm"]: g for g in self.구들()}
+        for 이름, (알lat, 알lon) in self.아는곳.items():
+            lat, lon = GP.tm5179_to_wgs84(float(by[이름]["x"]), float(by[이름]["y"]))
+            with self.subTest(구=이름):
+                self.assertAlmostEqual(lat, 알lat, places=2)
+                self.assertAlmostEqual(lon, 알lon, places=2)
+
+    def test_서울의_모양이_보존된다(self):
+        """도봉이 북쪽, 금천이 남쪽, 강동이 동쪽, 강서가 서쪽. 축이 뒤집히면 걸린다."""
+        pt = {g["adm_nm"]: GP.tm5179_to_wgs84(float(g["x"]), float(g["y"]))
+              for g in self.구들()}
+        self.assertEqual(max(pt, key=lambda k: pt[k][0]), "도봉구")
+        self.assertEqual(min(pt, key=lambda k: pt[k][0]), "금천구")
+        self.assertEqual(max(pt, key=lambda k: pt[k][1]), "강동구")
+        self.assertEqual(min(pt, key=lambda k: pt[k][1]), "강서구")
+
+    def test_이름이_25개_구_안에서_하나로_갈린다(self):
+        """'중구' 가 '중랑구'·'동대문구' 를 함께 물면 엉뚱한 구를 받는다."""
+        for g in self.구들():
+            맞은 = [h for h in self.구들()
+                  if GP.이름맞나(h["adm_nm"], g["adm_nm"])]
+            with self.subTest(구=g["adm_nm"]):
+                self.assertEqual([h["adm_cd"] for h in 맞은], [g["adm_cd"]])
+
+    def test_경계_표기가_달라도_같은_구로_읽힌다(self):
+        """경계는 '서울특별시 종로구', 통계는 '종로구' 로 온다."""
+        self.assertTrue(GP.이름맞나("서울특별시 종로구", "종로구"))
+        self.assertFalse(GP.이름맞나("서울특별시 종로구", "중구"))
+
+    def test_MultiPolygon_면적이_합쳐진다(self):
+        """양천구·구로구가 실제로 MultiPolygon 으로 온다."""
+        self.assertEqual(self.실제["_도형종류"]["11150"], "MultiPolygon")
+        멀티 = {"type": "MultiPolygon", "coordinates": [
+            [[[0, 0], [1000, 0], [1000, 1000], [0, 1000], [0, 0]]],
+            [[[2000, 0], [2500, 0], [2500, 1000], [2000, 1000], [2000, 0]]]]}
+        self.assertAlmostEqual(GP.geom_area_m2(멀티), 1_000_000.0 + 500_000.0)
+
+    def test_되짚어_나온_목이_면적을_깎지_않는다(self):
+        """구로구 경계에는 같은 점을 두 번 지나는 좁은 목이 있다. 왕복하는 변은
+        서로 지워져 0 이어야지, 음수가 되어 본체 면적을 깎으면 안 된다."""
+        목있음 = {"type": "Polygon", "coordinates": [[
+            [0, 0], [1000, 0], [1000, 1000],
+            [500, 1000], [500, 1500], [500, 1000],   # 왕복하는 목
+            [0, 1000], [0, 0]]]}
+        self.assertAlmostEqual(GP.geom_area_m2(목있음), 1_000_000.0)
+
+    def test_후보지가_자기_구의_인구를_받는다(self):
+        """전 구간. 성동구 후보지에 성동구 값(세대 123124 · 종사자 198800)이 와야 한다.
+        법정동코드 앞자리(11200)를 쓰면 동작구 값(173897 · 104719)이 온다."""
+        import csv, os, tempfile
+        구 = {g["adm_cd"]: g for g in self.구들()}
+
+        class R:
+            def __init__(s, b):
+                s._b = b.encode(); s.status = 200
+            def read(s): return s._b
+            def __enter__(s): return s
+            def __exit__(s, *a): return False
+
+        def fake(url, timeout=None, context=None):
+            q = dict(p.split("=", 1) for p in url.split("?", 1)[1].split("&")
+                     if "=" in p)
+            if "auth" in url:
+                return R(json.dumps({"errCd": 0, "result": {"accessToken": "T"}}))
+            adm, low = q.get("adm_cd", ""), q.get("low_search", "0")
+            뽑기 = ([구[adm]] if adm in 구
+                  else list(구.values()) if adm == "11" and low == "1" else [])
+            if "boundary" in url:
+                # 실제 응답과 같은 자리에 중심점을 두고, 도형은 그 둘레의 사각형
+                feats = []
+                for g in 뽑기:
+                    x, y = float(g["x"]), float(g["y"])
+                    feats.append({"type": "Feature", "geometry": {
+                        "type": "Polygon", "coordinates": [[
+                            [x - 2000, y - 2000], [x + 2000, y - 2000],
+                            [x + 2000, y + 2000], [x - 2000, y + 2000],
+                            [x - 2000, y - 2000]]]},
+                        "properties": {"x": g["x"], "y": g["y"],
+                                       "adm_cd": g["adm_cd"],
+                                       "adm_nm": "서울특별시 " + g["adm_nm"]}})
+                return R(json.dumps({"type": "FeatureCollection", "errCd": 0,
+                                     "features": feats}, ensure_ascii=False))
+            if adm == "11" and low == "0":
+                return R(json.dumps({"errCd": 0, "result": [
+                    {"adm_cd": "11", "adm_nm": "서울특별시"}]}, ensure_ascii=False))
+            if 뽑기:
+                return R(json.dumps({"errCd": 0, "result": 뽑기},
+                                    ensure_ascii=False))
+            return R(json.dumps({"errCd": "-100", "errMsg": "없는 코드"},
+                                ensure_ascii=False))
+
+        tmp = Path(tempfile.mkdtemp(prefix="seoul-"))
+        sites = tmp / "sites.csv"
+        with sites.open("w", encoding="utf-8-sig", newline="") as f:
+            w = csv.DictWriter(f, fieldnames=["후보지명", "주소", "법정동코드"])
+            w.writeheader()
+            w.writerow({"후보지명": "왕십리", "주소": "서울 성동구 왕십리로 222",
+                        "법정동코드": "1120010800"})
+            w.writerow({"후보지명": "역삼", "주소": "서울 강남구 테헤란로 152",
+                        "법정동코드": "1168010100"})
+
+        원래, 키 = urllib.request.urlopen, dict(os.environ)
+        urllib.request.urlopen = fake
+        os.environ["SGIS_KEY"], os.environ["SGIS_SECRET"] = "K", "S"
+        out = tmp / "격자인구.csv"
+        buf, old = io.StringIO(), sys.stdout
+        sys.stdout = buf
+        try:
+            rc = GP.main(["--live", "--sites", str(sites), "--out", str(out)])
+        finally:
+            sys.stdout, urllib.request.urlopen = old, 원래
+            os.environ.clear(); os.environ.update(키)
+        말 = buf.getvalue()
+        self.assertEqual(rc, 0, 말)
+
+        rows = {r["격자ID"]: r for r in read_csv(out)}
+        self.assertEqual(sorted(rows), ["SGIS:11040", "SGIS:11230"], 말)
+        성동 = rows["SGIS:11040"]
+        self.assertAlmostEqual(float(성동["세대수"]), 123124.0)
+        self.assertAlmostEqual(float(성동["직장인구"]), 198800.0)
+        # 동작구(SGIS 11200) 값이 들어왔다면 법정동코드를 그대로 쓴 것이다
+        self.assertNotAlmostEqual(float(성동["세대수"]), 173897.0)
+        강남 = rows["SGIS:11230"]
+        self.assertAlmostEqual(float(강남["세대수"]), 218895.0)
+        self.assertAlmostEqual(float(강남["직장인구"]), 769609.0)
+        self.assertAlmostEqual(float(성동["중심위도"]), 37.551, places=2)
+        self.assertAlmostEqual(float(강남["중심경도"]), 127.063, places=2)
+
+
+class TestAddressSplit(unittest.TestCase):
+    """주소에서 시도·시군구를 읽는다. 여기서 헛이름을 만들면 헛호출이 늘고,
+    무엇을 찾다 실패했는지도 흐려진다."""
+
+    def test_한_토막_시군구(self):
+        self.assertEqual(GP.주소쪼개기("서울 성동구 왕십리로 222"),
+                         ("서울", ["성동구"]))
+
+    def test_도로명을_시군구에_붙이지_않는다(self):
+        """'강남구강남대로' 같은 이름은 어디에도 없다."""
+        시도, 후보 = GP.주소쪼개기("서울 강남구 강남대로 152")
+        self.assertEqual(후보, ["강남구"])
+
+    def test_두_토막_시군구는_붙인다(self):
+        """SGIS 는 '성남시분당구' 로 쓴다."""
+        self.assertEqual(GP.주소쪼개기("경기 성남시 분당구 판교로 1"),
+                         ("경기", ["성남시분당구", "성남시"]))
+
+    def test_군도_붙인다(self):
+        self.assertEqual(GP.주소쪼개기("경북 포항시 남구 대이로")[1],
+                         ["포항시남구", "포항시"])
+
+    def test_정식_시도명을_줄인다(self):
+        self.assertEqual(GP.주소쪼개기("서울특별시 종로구 세종대로")[0], "서울")
+        self.assertEqual(GP.주소쪼개기("강원특별자치도 춘천시 중앙로")[0], "강원")
+        self.assertEqual(GP.주소쪼개기("전북특별자치도 전주시 완산구 팔달로")[0], "전북")
+
+    def test_빈_주소는_빈_손으로_돌아온다(self):
+        self.assertEqual(GP.주소쪼개기(""), ("", []))
+        self.assertEqual(GP.주소쪼개기("서울"), ("서울", []))

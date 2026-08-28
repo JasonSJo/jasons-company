@@ -321,8 +321,12 @@ def 시도짧게(name: str) -> str:
 def 주소쪼개기(주소: str) -> tuple[str, list[str]]:
     """주소 → (시도 줄임말, 시군구 후보 이름들).
 
-    시군구는 한 토막일 때도('성동구') 두 토막일 때도('수원시 장안구') 있다.
-    긴 쪽을 먼저 대 본다 — '수원시' 로 먼저 맞추면 장안·권선·팔달이 다 걸린다.
+    시군구는 한 토막일 때도('성동구') 두 토막일 때도('성남시 분당구') 있다. SGIS 는
+    두 토막짜리를 '성남시분당구' 로 붙여 쓴다. 긴 쪽을 먼저 대 본다 — '성남시' 로
+    먼저 맞추면 수정·중원·분당이 다 걸린다.
+
+    붙이는 것은 **'○○시 ○○구/군' 일 때뿐이다.** '강남구 강남대로' 처럼 뒤가 도로명인
+    주소까지 붙이면 있지도 않은 이름을 만들어 헛호출을 하고, 무엇을 찾는지도 흐려진다.
     """
     tok = [t for t in str(주소 or "").replace("\t", " ").split() if t]
     if not tok:
@@ -330,7 +334,7 @@ def 주소쪼개기(주소: str) -> tuple[str, list[str]]:
     시도 = 시도짧게(tok[0])
     뒤 = tok[1:3]
     후보 = []
-    if len(뒤) >= 2:
+    if len(뒤) >= 2 and 뒤[0].endswith("시") and 뒤[1][-1] in "구군":
         후보.append(뒤[0] + 뒤[1])
     if 뒤:
         후보.append(뒤[0])
@@ -1007,7 +1011,7 @@ def sgis_run(args, sites: list[dict], out: Path) -> int:
     if not args.live:
         write_rows([], out)
         읽힘 = [주소쪼개기(str(st.get("주소") or "")) for st in sites]
-        됨 = [f"{a} {b[0]}" for a, b in 읽힘 if a and b]
+        됨 = [f"{a} {b[0]}" for a, b in 읽힘 if a and b]  # 가장 좁게 잡은 이름
         print("dry-run — SGIS 를 호출하지 않았습니다.")
         print(f"  후보지 {len(sites)}곳 · 주소에서 시군구를 읽은 것 {len(됨)}곳"
               + (f" ({', '.join(sorted(set(됨))[:6])})" if 됨 else ""))
