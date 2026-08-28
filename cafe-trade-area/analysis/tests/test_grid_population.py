@@ -184,6 +184,20 @@ class TestProbe(unittest.TestCase):
             sys.stdout = old
         return rc, buf.getvalue()
 
+    def test_한쪽_호스트가_죽어_있으면_다른_쪽으로_넘어간다(self):
+        """개편으로 옛 주소가 404 여도 새 주소로 붙으면 진행돼야 한다."""
+        self.응답 = {
+            "https://sgisapi.mods.go.kr/OpenAPI3/auth/authentication.json":
+                {"result": {"accessToken": "TOK"}},
+            "https://sgisapi.mods.go.kr/OpenAPI3/stats/household.json":
+                {"errCd": 0, "result": [{"adm_cd": "11", "household_cnt": "1"}]},
+        }
+        rc, 말 = self.실행()
+        self.assertEqual(rc, 0)
+        self.assertIn("sgisapi.mods.go.kr", 말)
+        # 자료 주소도 인증이 통한 호스트를 따라가야 한다
+        self.assertIn("sgisapi.mods.go.kr/OpenAPI3/stats/household.json", 말)
+
     def test_응답한_것과_아닌_것을_갈라_보여_준다(self):
         rc, 말 = self.실행()
         self.assertEqual(rc, 0)
@@ -220,6 +234,13 @@ class TestConfirmedEndpoints(unittest.TestCase):
         self.assertEqual(
             GP.AUTH_URL,
             "https://sgisapi.kostat.go.kr/OpenAPI3/auth/authentication.json")
+
+    def test_개편된_호스트도_후보에_있다(self):
+        """통계청 → 국가데이터처 개편으로 개발지원센터가 sgis.mods.go.kr 로 옮겼다.
+        API 호스트도 함께 바뀌었을 수 있는데, 한쪽만 박아 두면 '키가 잘못됐나' 하고
+        엉뚱한 데를 찾게 된다."""
+        self.assertIn("https://sgisapi.mods.go.kr", GP.SGIS_HOSTS)
+        self.assertIn("https://sgisapi.kostat.go.kr", GP.SGIS_HOSTS)
 
     def test_후보에_가구와_사업체가_들어_있다(self):
         """H 는 세대수, W 는 종사자수에서 온다. 둘 다 눌러 봐야 한다."""

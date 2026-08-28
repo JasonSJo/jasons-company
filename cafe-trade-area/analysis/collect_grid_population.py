@@ -51,7 +51,13 @@ from common import read_csv, to_f
 ROOT = Path(__file__).resolve().parent
 
 # 인증은 문서로 확인했다: consumer_key/secret → result.accessToken
-AUTH_URL = "https://sgisapi.kostat.go.kr/OpenAPI3/auth/authentication.json"
+#
+# ⚠ 통계청이 국가데이터처로 개편되면서 개발지원센터 주소가 sgis.kostat.go.kr →
+#   sgis.mods.go.kr 로 옮겨 갔다. API 호스트도 함께 바뀌었을 수 있어 두 곳을 다
+#   눌러 본다 — 한쪽만 박아 두면 '키가 잘못됐나' 하고 엉뚱한 데를 찾게 된다.
+SGIS_HOSTS = ["https://sgisapi.kostat.go.kr", "https://sgisapi.mods.go.kr"]
+AUTH_PATH = "/OpenAPI3/auth/authentication.json"
+AUTH_URL = SGIS_HOSTS[0] + AUTH_PATH
 
 # 자료 조회는 아직 확인 중이다. SGIS 통계 API 는 좌표 사각형이 아니라
 # **adm_cd(행정구역코드) + year** 로 부르는 형태이고(household.json 은 household_cnt 를,
@@ -286,18 +292,31 @@ def probe(key: str, secret: str, auth_url: str, adm_cd: str, year: str,
         return 2
 
     print("SGIS 연동 점검")
-    print(f"  인증  {auth_url}")
-    token, err = get_token(key, secret, auth_url)
-    if err:
-        print(f"  ✕ 토큰 발급 실패 — {err}")
-        print("\n키가 맞는지, 승인이 끝났는지 확인하십시오. 신청 직후에는 "
-              "승인까지 시간이 걸릴 수 있습니다.")
+    # 개편으로 호스트가 옮겨 갔을 수 있다. 지정한 주소를 먼저 보고, 안 되면 다른 곳도.
+    후보 = [auth_url] + [h + AUTH_PATH for h in SGIS_HOSTS
+                        if h + AUTH_PATH != auth_url]
+    token, 쓴주소 = "", ""
+    for one in 후보:
+        print(f"  인증 시도  {one}")
+        token, err = get_token(key, secret, one)
+        if token:
+            쓴주소 = one
+            break
+        print(f"    ✕ {err}")
+    if not token:
+        print("\n어느 호스트에서도 토큰을 받지 못했습니다.")
+        print("  · 키와 시크릿이 맞는지, 승인이 끝났는지 확인하십시오.")
+        print("  · 개발지원센터가 sgis.mods.go.kr 로 옮겨 갔습니다. 그곳 문서에 적힌")
+        print("    API 주소가 다르면 --auth-url 로 넣어 주십시오.")
         return 1
-    print(f"  ✓ 토큰 발급됨 ({len(token)}자)")
+    print(f"  ✓ 토큰 발급됨 ({len(token)}자) — {쓴주소}")
+    # 자료 주소도 인증이 통한 호스트에 맞춘다
+    베이스 = 쓴주소.split("/OpenAPI3")[0]
 
     print("\n후보 엔드포인트를 하나씩 눌러 봅니다. 이 표가 연동을 확정하는 근거입니다.")
     작동 = []
     for 이름, url, kind, 설명 in CANDIDATES:
+        url = 베이스 + url.split(".go.kr", 1)[1] if ".go.kr" in url else url
         if kind == "adm_cd":
             params = {"adm_cd": adm_cd, "year": year}
         elif kind == "bbox" and box:
