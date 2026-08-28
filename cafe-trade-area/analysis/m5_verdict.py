@@ -97,6 +97,10 @@ def market_rent(site: dict, market: dict) -> dict | None:
     실거래가는 **매매가**라 임대 조건과 직접 비교할 수 없다. 그 간극을 메우는 것이
     연임대수익률이고, 이 값은 미검증 계수다(config.상업용_연임대수익률).
     표본이 적거나 면적·시세가 없으면 대조하지 않는다 — 없는 근거로 판단하지 않는다.
+
+    ⚠ **판정에는 들어가지 않는다.** judge() 는 이 함수를 부르지 않는다. 산출물에
+    참고 자료로 실을 때만 쓴다 — 검증되지 않은 환산으로 보류를 만들면, 실거래
+    데이터가 있는 지역의 후보지만 근거 없이 불리해진다.
     """
     if not market:
         return None
@@ -119,11 +123,14 @@ def market_rent(site: dict, market: dict) -> dict | None:
 
 
 def judge(site: dict, revenue: dict, settings: dict, S: float,
-          overlaps: list[dict], s_pool_max: float = None,
-          market: dict = None) -> dict:
+          overlaps: list[dict], s_pool_max: float = None) -> dict:
     """3단 판정. 매출 추정이 실패해도 판정 자체는 내린다(치명 플래그는 매출과 무관).
 
-    market 은 그 후보지가 속한 지역의 실거래가 요약(없으면 대조를 건너뛴다).
+    **지역 실거래가(법정동 기반)는 판정에 들어가지 않는다.** 매매가를 임대료로
+    환산한 값이라 층·용도·전면 편차를 담지 못하고, 환산에 쓰는 연임대수익률이
+    미검증 계수다. 검증되지 않은 환산이 보류를 만들면, 데이터가 있는 지역의
+    후보지만 근거 없이 불리해진다. 시세는 market_rent() 로 따로 계산해
+    **참고 자료로만** 싣는다(review_sites.py).
     """
     v = variable_rate(settings)
     fc = fixed_cost(site, settings)
@@ -137,7 +144,6 @@ def judge(site: dict, revenue: dict, settings: dict, S: float,
 
     can = cannibalization(overlaps)
     overlap = can["최대_overlap"]
-    mkt = market_rent(site, market)
     fatal = fatal_flags(site)
     unchecked = flags_unchecked(site)
 
@@ -164,11 +170,6 @@ def judge(site: dict, revenue: dict, settings: dict, S: float,
             hold.append(f"S {nf(S, 1)} < {nf(c('보류_점수'))}")
         if overlap > c("보류_중첩"):
             hold.append(f"자사 상권 중첩 {pf(overlap)} > {pf(c('보류_중첩'))}")
-        if mkt and mkt["배수"] is not None and mkt["배수"] > c("시세대비_보류배수"):
-            hold.append(
-                f"임대료가 지역 시세 기대치의 {nf(mkt['배수'], 2)}배 "
-                f"(제시 {nf(mkt['제시_월임대료_만원'])} vs 기대 {nf(mkt['기대_월임대료_만원'])}만원, "
-                f"실거래 {mkt['건수']}건) > {nf(c('시세대비_보류배수'), 2)}배")
         verdict = "보류" if hold else "통과"
         reasons += hold
 
@@ -183,12 +184,6 @@ def judge(site: dict, revenue: dict, settings: dict, S: float,
     if verdict == "통과" and unchecked:
         notes.append(f"⛔ 치명 항목 {len(unchecked)}건이 미확인 상태입니다 — "
                      f"등기·임대인·소송·인허가 실사를 마치기 전의 '통과'는 잠정입니다.")
-    if mkt:
-        notes.append(f"지역 시세 대조: 실거래 {mkt['건수']}건 중앙 "
-                     f"{nf(mkt['만원_per_m2_중앙'], 1)}만원/㎡ → 기대 월임대료 "
-                     f"{nf(mkt['기대_월임대료_만원'])}만원 (연수익률 "
-                     f"{pf(c('상업용_연임대수익률'), 1)} 가정 · 미검증). "
-                     f"매매가를 임대료로 환산한 값이므로 참고선입니다.")
     if can["잠식액_합_만원"] > 0:
         notes.append(f"자사 기존점 잠식 추정 {nf(can['잠식액_합_만원'])}만원/월 "
                      f"(κ={can['κ']} 미검증) — 신규 매출에서 차감해 순증을 보십시오.")
@@ -198,6 +193,6 @@ def judge(site: dict, revenue: dict, settings: dict, S: float,
         "치명플래그": fatal, "치명_미확인": unchecked,
         "변동비율": v, "고정비": fc, "BEP_만원": bep,
         "margin": margin, "margin_low": margin_low,
-        "S": S, "카니발": can, "시세대조": mkt,
+        "S": S, "카니발": can,
         "순증_월매출_만원": (r_med - can["잠식액_합_만원"]) if r_med else None,
     }

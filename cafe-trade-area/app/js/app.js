@@ -26,7 +26,7 @@ const App = (() => {
     const rev = { 월매출_중앙: (r.매출 || {}).월매출_중앙, 월매출_하한: (r.매출 || {}).월매출_하한 };
     return M5.judge(INP.merged(r), rev, { 운영: ops() }, r.S,
                     (r.판정.카니발.상세 || []).map(x => ({ ...x })),
-                    CFG.c('잠식계수_카파'), r.S_풀최대, r.시세);
+                    CFG.c('잠식계수_카파'), r.S_풀최대);
   }
   const flipped = r => recalc() && verdictOf(r).판정 !== r.판정.판정;
 
@@ -317,7 +317,7 @@ const App = (() => {
     };
     const rev = { 월매출_중앙: k.sales, 월매출_하한: k.sales * k.lowRatio };
     const ov = (r.판정.카니발.상세 || []).map(x => ({ ...x }));
-    return M5.judge(site, rev, cfg, r.S, ov, CFG.c('잠식계수_카파'), r.S_풀최대, r.시세);
+    return M5.judge(site, rev, cfg, r.S, ov, CFG.c('잠식계수_카파'), r.S_풀최대);
   }
 
   function renderSim() {

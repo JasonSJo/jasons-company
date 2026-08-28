@@ -65,7 +65,8 @@ def analyze_all(sites: list[dict], stores: list[dict], isos: dict, cells: list,
     """후보지 전체를 심의 가능한 형태로 만든다.
 
     market 은 {지역코드: 실거래가 요약}. 후보지의 법정동코드 앞 5자리로 찾아
-    M5 의 시세 대조에 넘긴다. 비어 있으면 대조를 건너뛴다 — 없는 근거로 판단하지 않는다.
+    **참고 자료로만** 레코드에 싣는다(rec["시세대조"]). 판정에는 넘기지 않는다.
+    비어 있으면 대조를 건너뛴다 — 없는 근거로 판단하지 않는다.
     """
     days = to_f(settings.get("영업일수"), 30) or 30
 
@@ -96,11 +97,14 @@ def analyze_all(sites: list[dict], stores: list[dict], isos: dict, cells: list,
             if ov > 0:
                 overlaps.append({"점포명": st["이름"], "overlap": ov,
                                  "월매출_만원": to_f(st["후보지"].get("월매출_만원"))})
-        # 요약 자체도 레코드에 남긴다 — 콘솔이 M5 를 다시 계산할 때 같은 근거를 써야
-        # 화면과 CLI 의 판정이 갈리지 않는다.
+        # 지역 실거래가는 **판정에 넘기지 않는다.** 참고 자료로만 레코드에 남긴다 —
+        # 매매가를 임대료로 환산한 값이라 층·용도·전면 편차를 담지 못하고, 환산
+        # 계수가 미검증이다. 검증되지 않은 환산이 보류를 만들면 실거래 데이터가
+        # 있는 지역의 후보지만 근거 없이 불리해진다.
         rec["시세"] = mkt = (market or {}).get(TX.lawd(rec["후보지"].get("법정동코드")))
+        rec["시세대조"] = M5.market_rent(rec["후보지"], mkt)
         rec["판정"] = M5.judge(rec["후보지"], rec["매출"], settings, rec.get("S", 0.0),
-                              overlaps, rec.get("S_풀최대"), mkt)
+                              overlaps, rec.get("S_풀최대"))
         rec["경고"] += list(rec["매출"].get("경고", []))
 
     return {

@@ -52,14 +52,9 @@ def build_cases(n=400):
         overlaps = [{"점포명": f"o{k}", "overlap": round(rnd.uniform(0, 0.6), 4),
                      "월매출_만원": rnd.uniform(500, 6000)}
                     for k in range(rnd.choice([0, 0, 1, 2, 3]))]
-        # 실거래가 대조는 면적·시세·표본이 다 있어야 켜진다. 셋 중 하나만 빠져도
-        # 대조를 건너뛰는 경로를 타므로, 빠진 경우까지 섞어서 훑는다.
+        # 전용면적은 판정에 들어가지 않지만(시세 대조를 뺐다) 값이 있고 없고가
+        # 다른 경로를 타지 않는지 확인하기 위해 계속 섞는다.
         site["전용면적_평"] = rnd.choice(["", 12, 18, 25, 40])
-        market = rnd.choice([
-            None, None, {},
-            {"건수": rnd.choice([0, 3, 5, 12, 80]),
-             "만원_per_m2_중앙": round(rnd.uniform(200, 2600), 2)},
-        ])
         cases.append({
             "site": site,
             "revenue": {"월매출_중앙": med, "월매출_하한": low},
@@ -68,7 +63,6 @@ def build_cases(n=400):
             "overlaps": overlaps,
             "kappa": kappa,
             "sPoolMax": rnd.choice([None, 63.0, 82.0]),
-            "market": market,
         })
     # 임계값 정확히 위/아래를 명시적으로 넣는다
     base = {"월임대료_만원": 400, "관리비_만원": 30,
@@ -79,38 +73,18 @@ def build_cases(n=400):
         med = bep / (1 - m)
         cases.append({"site": dict(base), "revenue": {"월매출_중앙": med, "월매출_하한": med},
                       "settings": SETTINGS, "S": 90.0, "overlaps": [],
-                      "kappa": C.c("잠식계수_카파"), "sPoolMax": None, "market": None})
+                      "kappa": C.c("잠식계수_카파"), "sPoolMax": None})
     for s in (69.99, 70.0, 70.01):
         cases.append({"site": dict(base), "revenue": {"월매출_중앙": 9000, "월매출_하한": 8000},
                       "settings": SETTINGS, "S": s, "overlaps": [],
-                      "kappa": C.c("잠식계수_카파"), "sPoolMax": None, "market": None})
+                      "kappa": C.c("잠식계수_카파"), "sPoolMax": None})
     for ov in (0.2999, 0.30, 0.3001):
         cases.append({"site": dict(base), "revenue": {"월매출_중앙": 9000, "월매출_하한": 8000},
                       "settings": SETTINGS, "S": 90.0,
                       "overlaps": [{"점포명": "x", "overlap": ov, "월매출_만원": 3000}],
-                      "kappa": C.c("잠식계수_카파"), "sPoolMax": None, "market": None})
-    # 시세 대조 배수 임계의 위/아래를 정확히 밟는다.
-    # 기대_월임대료 = 만원_per_m2_중앙 × 전용면적_평 × 3.305785 × 연수익률 ÷ 12
-    area = 20
-    unit = 1000.0
-    expected = unit * area * M5.PY_PER_M2 * C.c("상업용_연임대수익률") / 12.0
-    배수 = C.c("시세대비_보류배수")
-    for mult in (배수 - 0.0001, 배수, 배수 + 0.0001):
-        site = dict(base, 전용면적_평=area, 월임대료_만원=expected * mult)
-        F = site["월임대료_만원"] + 30 + 620 + 170
-        med = (F / (1 - 0.412)) * 2.0          # margin 은 넉넉히 — 시세 조건만 남긴다
-        cases.append({"site": site, "revenue": {"월매출_중앙": med, "월매출_하한": med},
-                      "settings": SETTINGS, "S": 90.0, "overlaps": [],
-                      "kappa": C.c("잠식계수_카파"), "sPoolMax": None,
-                      "market": {"건수": 40, "만원_per_m2_중앙": unit}})
-    # 표본 부족 — 건수가 최소치 바로 아래/위
-    n_min = int(C.c("시세대조_최소건수"))
-    for n in (n_min - 1, n_min):
-        cases.append({"site": dict(base, 전용면적_평=area),
-                      "revenue": {"월매출_중앙": 9000, "월매출_하한": 8000},
-                      "settings": SETTINGS, "S": 90.0, "overlaps": [],
-                      "kappa": C.c("잠식계수_카파"), "sPoolMax": None,
-                      "market": {"건수": n, "만원_per_m2_중앙": unit}})
+                      "kappa": C.c("잠식계수_카파"), "sPoolMax": None})
+    # 시세 대조는 판정에서 뺐다. 임계도 사라졌으므로 밟을 경계가 없다.
+    # (시세가 판정을 움직이지 않는다는 것은 test_market_link.py 가 지킨다)
     return cases
 
 
@@ -131,7 +105,7 @@ class TestM5Parity(unittest.TestCase):
         for i, (c, j) in enumerate(zip(self.cases, self.js)):
             with self.subTest(case=i):
                 py = M5.judge(c["site"], c["revenue"], c["settings"], c["S"],
-                              c["overlaps"], c["sPoolMax"], c.get("market"))
+                              c["overlaps"], c["sPoolMax"])
                 self.assertEqual(py["판정"], j["판정"], f"case {i} 판정")
                 self.assertEqual(py["사유"], j["사유"], f"case {i} 사유")
                 self.assertEqual(py["비고"], j["비고"], f"case {i} 비고")
@@ -147,12 +121,8 @@ class TestM5Parity(unittest.TestCase):
                 self.assertAlmostEqual(py["고정비"]["F"], j["F"], delta=TOL)
                 self.assertAlmostEqual(py["카니발"]["최대_overlap"], j["최대_overlap"], delta=TOL)
                 self.assertAlmostEqual(py["카니발"]["잠식액_합_만원"], j["잠식액_합_만원"], delta=TOL)
-                self.assertEqual(py["시세대조"] is None, j["시세대조"] is None,
-                                 f"case {i} 시세대조 유무")
-                if py["시세대조"] is not None:
-                    for k, v in py["시세대조"].items():
-                        self.assertAlmostEqual(v, j["시세대조"][k], delta=TOL,
-                                               msg=f"case {i} 시세대조.{k}")
+                # 시세는 양쪽 판정 어디에도 없어야 한다
+                self.assertNotIn("시세대조", py, f"case {i}")
 
     def test_cases_actually_cover_all_verdicts(self):
         """케이스가 세 판정을 전부 밟지 않으면 이 테스트는 무의미하다."""
@@ -163,12 +133,13 @@ class TestM5Parity(unittest.TestCase):
         notes = " ".join(x for j in self.js for x in j["비고"])
         self.assertIn("S 게이트 축퇴", notes)
         self.assertIn("미확인", notes)
-        self.assertIn("지역 시세 대조", notes)
 
-    def test_cases_cover_market_rent_hold(self):
-        """시세 대조가 보류를 실제로 만들어내는 케이스가 없으면 대조가 걸려 있는지 알 수 없다."""
-        사유 = " ".join(x for j in self.js for x in j["사유"])
-        self.assertIn("임대료가 지역 시세 기대치의", 사유)
+    def test_시세가_판정에_남아_있지_않다(self):
+        """양쪽(파이썬·JS) 모두에서 사라졌는지 본다. 한쪽에만 남으면 화면과 CLI 의
+        판정이 갈린다 — 같은 후보지를 두 곳에서 보고 다른 답을 받는다."""
+        for j in self.js:
+            self.assertNotIn("시세대조", j)
+            self.assertFalse(any("시세" in x for x in j["사유"] + j["비고"]), j)
 
 
 if __name__ == "__main__":
