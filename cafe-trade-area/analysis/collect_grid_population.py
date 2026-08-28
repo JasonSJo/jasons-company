@@ -13,17 +13,19 @@ SGIS 는 전국 격자 센서스를 무료 API 로 준다. 여기를 이으면 �
 '있었을 것' 을 세는 값이 아니다. 그래서 M2 도 이 값에는 대용 경고를 붙이지 않는다.
 전국 어디서나 같은 방식으로 나오므로 지역 편차 걱정도 없다.
 
-확인한 것과 아직 못 한 것을 갈라 둔다.
+실제 호출로 확인한 것 (2026-08)
 
-  ✅ 인증  consumer_key/secret → result.accessToken (문서로 확인)
-  ❓ 조회  SGIS 통계 API 는 좌표 사각형이 아니라 **adm_cd(행정구역코드) + year** 로
-          부르는 형태다(household.json → household_cnt, company.json → 종사자수).
-          격자 단위 상품이 따로 있는지는 이 환경에서 문서를 열 수 없어 확정하지
-          못했다. 처음 세운 bbox 가정은 틀렸을 가능성이 높다.
+  ✅ 인증  consumer_key/secret → result.accessToken · 토큰 수명 4시간
+  ✅ 세대수 stats/household.json?adm_cd=11&year=2023
+           → {"result":[{"household_cnt":"4141659","adm_cd":"11","adm_nm":"서울특별시"}]}
+  ❓ 종사자수 stats/company.json — 같은 모양일 것으로 보고 붙였으나 미확인
+  ❓ 경계   boundary/*.geojson — 되면 --areas 를 손으로 안 채워도 된다. 미확인
 
-  그래서 추측으로 코드를 더 쌓는 대신 **--probe** 를 뒀다. 키가 있는 곳에서 한 번
-  돌리면 후보 엔드포인트를 하나씩 눌러 보고 무엇이 답하는지, 응답 필드가 무엇인지
-  그대로 출력한다. 그 출력이 연동을 확정하는 근거다.
+  처음에는 좌표 사각형(bbox)으로 격자를 받는 줄 알았는데 **틀렸다.** 실제로는
+  행정구역 코드로 부르고 좌표도 면적도 주지 않는다. 그 가정을 따르던 코드는
+  걷어냈다 — 반증된 가정을 남겨 두면 어느 쪽이 맞는지 헷갈린다.
+
+  확인이 덜 된 자리는 --probe 로 눌러 본다:
 
       SGIS_KEY=... SGIS_SECRET=... python3 collect_grid_population.py --probe
 
@@ -183,12 +185,34 @@ def get_token(key: str, secret: str, url: str = AUTH_URL) -> tuple[str, str]:
     return tok, ""
 
 
-def fetch_grid(token: str, box: dict, url: str = DATA_URL) -> tuple[list, str]:
+# ── 실제 응답으로 확인된 것 ──────────────────────────
+# stats/household.json?accessToken=..&adm_cd=11&year=2023
+#   {"result":[{"household_cnt":"4141659","avg_family_member_cnt":"2.2",
+#               "family_member_cnt":8908911,"all_household_cnt":4141659,
+#               "adm_cd":"11","adm_nm":"서울특별시"}],
+#    "errCd":0,"errMsg":"Success","id":"API_0305","trId":"..."}
+#
+# 좌표도 면적도 주지 않는다. adm_cd 와 값뿐이다. 그래서 처음 세운 bbox 가정은
+# 버리고, KOSIS 와 같은 모양으로 간다 — adm_cd 로 부르고 --areas 로 좌표·면적을 잇는다.
+SGIS_STATS = {
+    "세대수": ("/OpenAPI3/stats/household.json",
+            ["household_cnt", "all_household_cnt", "hshld_cnt"]),
+    "직장인구": ("/OpenAPI3/stats/company.json",
+             ["tot_worker", "worker_cnt", "corp_worker_cnt", "employee_cnt"]),
+}
+
+
+def fetch_sgis_stats(token: str, base: str, path: str, adm_cd: str,
+                     year: str, low_search: str = "0") -> tuple[list, str]:
+    """SGIS 통계 한 종류를 행정구역 코드로 부른다.
+
+    low_search=1 이면 그 아래 단계(시도→시군구, 시군구→행정동)로 쪼개 준다.
+    """
     q = urllib.parse.urlencode({
-        "accessToken": token,
-        "minx": box["minx"], "miny": box["miny"],
-        "maxx": box["maxx"], "maxy": box["maxy"],
+        "accessToken": token, "adm_cd": adm_cd,
+        "year": year, "low_search": low_search,
     })
+    url = base + path
     try:
         with urllib.request.urlopen(f"{url}?{q}", timeout=25,
                                     context=ssl.create_default_context()) as r:
@@ -200,37 +224,46 @@ def fetch_grid(token: str, box: dict, url: str = DATA_URL) -> tuple[list, str]:
     try:
         doc = json.loads(body)
     except ValueError as e:
-        return [], f"JSON 파싱 실패: {e} · 응답 앞부분: {body[:300]}"
+        return [], f"JSON 파싱 실패: {e} · 앞부분 {body[:200]}"
+    # SGIS 는 오류도 HTTP 200 으로 보낸다
     if str(doc.get("errCd", "0")) not in ("0", "None", ""):
         return [], f"errCd {doc.get('errCd')} {doc.get('errMsg', '')}"
     rows = doc.get("result")
-    if not isinstance(rows, list):
-        return [], f"예상한 형태가 아닙니다: {json.dumps(doc, ensure_ascii=False)[:300]}"
+    if not isinstance(rows, list) or not rows:
+        return [], f"자료가 비었습니다: {json.dumps(doc, ensure_ascii=False)[:200]}"
     return rows, ""
 
 
-def to_rows(records: list, 한변: float = 100.0) -> tuple[list[dict], dict]:
-    """SGIS 응답 → 격자인구 행. 좌표나 인구를 못 읽은 격자는 만들지 않는다."""
-    out, 버림 = [], {"좌표없음": 0, "인구없음": 0}
-    for r in records:
+def sgis_to_cells(rows: list, areas: dict, 항목: str,
+                  후보키: list[str]) -> tuple[list[dict], dict]:
+    """SGIS 통계 행 → 격자인구 행. 좌표·면적은 --areas 에서 잇는다."""
+    out, 버림 = [], {"코드없음": 0, "값없음": 0, "면적없음": 0}
+    for r in rows:
         if not isinstance(r, dict):
             continue
-        lat, lon = to_f(pick(r, FIELDS["위도"])), to_f(pick(r, FIELDS["경도"]))
-        if not (33.0 <= lat <= 39.0 and 124.0 <= lon <= 132.0):
-            버림["좌표없음"] += 1
+        code = str(r.get("adm_cd") or "").strip()
+        if not code:
+            버림["코드없음"] += 1
             continue
-        h = to_f(pick(r, FIELDS["세대수"]))
-        w = to_f(pick(r, FIELDS["직장인구"]))
-        if h <= 0 and w <= 0:
-            # 사람도 일자리도 없는 격자는 M2 에 넣어 봐야 0 을 더할 뿐이다
-            버림["인구없음"] += 1
+        n = 0.0
+        for k in 후보키:
+            if str(r.get(k, "")).strip() != "":
+                n = to_f(r.get(k))
+                break
+        if n <= 0:
+            버림["값없음"] += 1
             continue
-        gid = pick(r, FIELDS["격자ID"]) or f"G{round(lat * 10000)}_{round(lon * 10000)}"
+        info = areas.get(code) or areas.get(code[:5]) or {}
+        면적, lat, lon = info.get("면적_m2", 0), info.get("위도", 0), info.get("경도", 0)
+        if not (면적 > 0 and lat and lon):
+            버림["면적없음"] += 1
+            continue
         out.append({
-            "격자ID": gid,
+            "격자ID": f"SGIS:{code}",
             "중심위도": round(lat, 6), "중심경도": round(lon, 6),
-            "한변_m": to_f(pick(r, FIELDS["한변"])) or 한변,
-            "세대수": round(h, 1), "직장인구": round(w, 1),
+            "한변_m": round(면적 ** 0.5, 1),
+            "세대수": round(n, 1) if 항목 == "세대수" else 0,
+            "직장인구": round(n, 1) if 항목 == "직장인구" else 0,
         })
     return out, 버림
 
@@ -632,6 +665,88 @@ def kosis_probe(api_key: str) -> int:
     return 0 if 찾음 else 1
 
 
+def sgis_run(args, sites: list[dict], out: Path) -> int:
+    """SGIS 에서 세대수·종사자수를 받아 격자인구.csv 를 만든다.
+
+    후보지의 법정동코드 앞 5자리를 행정구역 코드로 쓴다. --low-search 1 을 주면
+    그 아래 단계(행정동)까지 쪼개 받는다 — 시군구는 한 변이 4km 를 넘어 M2 가
+    '격자가 아니다' 경고를 내므로, 행정동이 나오면 그쪽이 낫다.
+    """
+    key = os.environ.get("SGIS_KEY", "").strip()
+    secret = os.environ.get("SGIS_SECRET", "").strip()
+    areas = load_areas(args.areas)
+    코드 = sorted({b[:5] for b in
+                 ("".join(c for c in str(st.get("법정동코드") or "") if c.isdigit())
+                  for st in sites) if len(b) >= 5})
+
+    if not args.live:
+        write_rows([], out)
+        print("dry-run — SGIS 를 호출하지 않았습니다.")
+        print(f"  후보지 {len(sites)}곳 → 조회할 시군구 {len(코드)}개"
+              + (f" ({', '.join(코드)})" if 코드 else " — 법정동코드가 없습니다"))
+        print(f"  키 {'있음' if key and secret else '없음'} · 구역 면적표 {len(areas)}건")
+        print("  ※ dry-run 은 인구 수를 만들어 내지 않습니다.")
+        print(f"  → {out} (빈 표)")
+        return 0
+
+    if not (key and secret):
+        print("SGIS_KEY / SGIS_SECRET 이 필요합니다.", file=sys.stderr)
+        return 2
+    if not 코드:
+        print("후보지에 법정동코드가 없습니다 — 입력 화면에서 주소를 검색하면 "
+              "채워집니다.", file=sys.stderr)
+        return 2
+    if not areas:
+        print("--areas 로 구역코드→면적·중심점 표가 필요합니다. SGIS 통계는 "
+              "행정구역 코드와 값만 주고 좌표도 면적도 주지 않습니다.", file=sys.stderr)
+        print("  뼈대 만들기: --make-areas --sites 후보지.csv --areas 행정구역.csv",
+              file=sys.stderr)
+        return 2
+
+    # 인증 — 호스트가 옮겨 갔을 수 있어 두 곳을 다 본다
+    후보 = [args.auth_url] + [h + AUTH_PATH for h in SGIS_HOSTS
+                            if h + AUTH_PATH != args.auth_url]
+    token, 베이스 = "", ""
+    for one in 후보:
+        token, err = get_token(key, secret, one)
+        if token:
+            베이스 = one.split("/OpenAPI3")[0]
+            break
+    if not token:
+        print(f"토큰 발급 실패 — {err}", file=sys.stderr)
+        return 1
+
+    묶음 = []
+    for 항목, (path, 키들) in SGIS_STATS.items():
+        cells_all = []
+        for adm in 코드:
+            rows, err = fetch_sgis_stats(token, 베이스, path, adm,
+                                         args.year, args.low_search)
+            if err:
+                print(f"  ✕ {항목} {adm} — {err}", file=sys.stderr)
+                continue
+            cells, 버림 = sgis_to_cells(rows, areas, 항목, 키들)
+            cells_all += cells
+            if 버림["면적없음"]:
+                print(f"      {adm}: 면적표에 없는 구역 {버림['면적없음']}개를 건너뜀")
+        if cells_all:
+            print(f"  ✓ {항목} — {len(cells_all)}개 구역")
+            묶음.append(cells_all)
+
+    if not 묶음:
+        print("한 항목도 받지 못했습니다.", file=sys.stderr)
+        return 1
+    cells = merge_cells(묶음[0], 묶음[1] if len(묶음) > 1 else [])
+    cells, 중복 = dedupe(cells)
+    write_rows(cells, out)
+    print(f"SGIS 격자인구 — 구역 {len(cells)}개 → {out}")
+    큰것 = [c for c in cells if to_f(c["한변_m"]) > 300]
+    if 큰것:
+        print(f"  🙋 {len(큰것)}개 구역이 한 변 300m 를 넘습니다 — M2 가 안분 경고를 "
+              f"냅니다. --low-search 1 로 더 잘게 받으면 줄어듭니다.")
+    return 0
+
+
 def make_areas(sites: list[dict], out: Path) -> int:
     """후보지에 필요한 구역코드만 골라 --areas 표의 뼈대를 만든다.
 
@@ -753,7 +868,7 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="통계청 SGIS 격자 인구를 받는다 (전국)")
     ap.add_argument("--sites", default=str(ROOT / "후보지.example.csv"))
     ap.add_argument("--radius", type=float, default=DEFAULT_RADIUS,
-                    help=f"후보지 주변 조회 반경 m (기본 {DEFAULT_RADIUS:g} · P10 을 덮어야 한다)")
+                    help=f"--probe 의 bbox 후보를 부를 때 쓰는 반경 m (기본 {DEFAULT_RADIUS:g})")
     ap.add_argument("--live", action="store_true", help="실제로 호출한다(기본은 dry-run)")
     ap.add_argument("--source", default="sgis", choices=("sgis", "kosis"),
                     help="어느 기관에서 받을지. 둘 다 전국·무료이고 같은 자리를 채운다")
@@ -776,10 +891,11 @@ def main(argv=None) -> int:
     ap.add_argument("--find", action="append", default=[],
                     help="통계표 이름에서 찾을 낱말. 여러 번 줄 수 있다. "
                          "예: --find 세대 --find 종사자")
+    ap.add_argument("--low-search", default="0",
+                    help="1 이면 그 아래 단계(시군구→행정동)로 쪼개 받는다")
     ap.add_argument("--max-calls", type=int, default=60,
                     help="--find 가 쓸 최대 호출 수 (남의 API 다)")
     ap.add_argument("--auth-url", default=AUTH_URL)
-    ap.add_argument("--data-url", default=DATA_URL)
     ap.add_argument("--out", default=str(ROOT / "output" / "격자인구.csv"))
     args = ap.parse_args(argv)
 
@@ -810,59 +926,7 @@ def main(argv=None) -> int:
 
     if args.source == "kosis":
         return kosis_run(args, out)
-
-    if not args.live:
-        write_rows([], out)
-        print(f"dry-run — SGIS 를 호출하지 않았습니다.")
-        print(f"  후보지 {len(sites)}곳 중 좌표 있는 {len(boxes)}곳을 조회 대상으로 잡았습니다"
-              + (f" (좌표 없음 {좌표없음}곳)" if 좌표없음 else ""))
-        print(f"  키 SGIS_KEY {'있음' if key else '없음'} · "
-              f"SGIS_SECRET {'있음' if secret else '없음'} · 비용 무료")
-        print(f"  실제로 받으려면: SGIS_KEY=... SGIS_SECRET=... "
-              f"python3 {Path(__file__).name} --live --sites {args.sites}")
-        print("  ※ dry-run 은 인구 수를 만들어 내지 않습니다 — 지어낸 배후 수요가 "
-              "심의표에 실리면 실측으로 오인됩니다.")
-        print(f"  → {out} (빈 표)")
-        return 0
-
-    if not (key and secret):
-        print("SGIS_KEY / SGIS_SECRET 이 필요합니다. "
-              "sgis.kostat.go.kr/developer 에서 무료로 발급합니다.", file=sys.stderr)
-        return 2
-    if not boxes:
-        print("좌표가 있는 후보지가 없습니다. 입력 화면에서 주소를 검색해 좌표를 "
-              "채우십시오.", file=sys.stderr)
-        return 2
-
-    token, err = get_token(key, secret, args.auth_url)
-    if err:
-        print(f"토큰 발급 실패: {err}", file=sys.stderr)
-        return 1
-
-    rows, 실패 = [], []
-    for b in boxes:
-        got, ferr = fetch_grid(token, b, args.data_url)
-        if ferr:
-            실패.append((b["이름"], ferr))
-            continue
-        made, 버림 = to_rows(got)
-        rows += made
-    rows, 중복 = dedupe(rows)
-    write_rows(rows, out)
-
-    print(f"SGIS 격자 인구 — 후보지 {len(boxes)}곳 · 격자 {len(rows)}개")
-    if 중복:
-        print(f"  겹친 격자 {중복}개는 한 번만 넣었습니다 — 그대로 두면 H·W 가 "
-              f"겹친 만큼 부풀어 오릅니다")
-    for name, e in 실패:
-        print(f"  ⚠ {name}: {e}", file=sys.stderr)
-    if 실패 and not rows:
-        print("  한 곳도 받지 못했습니다. 위 오류를 보고 --auth-url / --data-url 이나 "
-              "FIELDS 를 고치십시오.", file=sys.stderr)
-        return 1
-    print(f"  → {out}")
-    print(f"  다음: python3 review_sites.py --sites {args.sites} (격자인구.csv 를 씁니다)")
-    return 0
+    return sgis_run(args, sites, out)
 
 
 if __name__ == "__main__":

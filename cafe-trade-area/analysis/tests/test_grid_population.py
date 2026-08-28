@@ -53,45 +53,70 @@ class TestBBox(unittest.TestCase):
         self.assertEqual([b["이름"] for b in got], ["있음"])
 
 
-class TestParse(unittest.TestCase):
-    def test_필드명이_달라도_읽는다(self):
-        rows, _ = GP.to_rows([
-            {"grid_id": "G1", "lat": "37.5445", "lon": "127.0557",
-             "hshld_cnt": "8", "corp_worker_cnt": "14"},
-            {"격자ID": "G2", "중심위도": "37.5450", "중심경도": "127.0562",
-             "세대수": "7", "직장인구": "19"},
-        ])
-        self.assertEqual(len(rows), 2)
-        self.assertEqual(rows[0]["세대수"], 8.0)
-        self.assertEqual(rows[1]["직장인구"], 19.0)
+class TestSgisStatsShape(unittest.TestCase):
+    """실제 SGIS 응답. 처음에 세웠던 bbox·격자 가정은 틀렸고, 받아 보니
+    adm_cd 와 값만 온다 — 좌표도 면적도 없다."""
 
-    def test_한국_밖_좌표는_버린다(self):
-        rows, 버림 = GP.to_rows([
-            {"lat": "0", "lon": "0", "hshld_cnt": "10", "corp_worker_cnt": "5"}])
+    실제 = {"result": [{"household_cnt": "4141659", "avg_family_member_cnt": "2.2",
+                      "family_member_cnt": 8908911, "all_household_cnt": 4141659,
+                      "adm_cd": "11", "adm_nm": "서울특별시"}],
+           "errCd": 0, "errMsg": "Success", "id": "API_0305",
+           "trId": "m8Uw_API_0305_1787896255885"}
+
+    AREAS = {"11200": {"면적_m2": 16850000.0, "위도": 37.5634, "경도": 127.0371}}
+
+    def test_세대수_필드를_읽는다(self):
+        rows, 버림 = GP.sgis_to_cells(
+            [dict(self.실제["result"][0], adm_cd="11200")],
+            self.AREAS, "세대수", GP.SGIS_STATS["세대수"][1])
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["세대수"], 4141659.0)
+        self.assertEqual(rows[0]["직장인구"], 0)
+        self.assertEqual(rows[0]["격자ID"], "SGIS:11200")
+
+    def test_좌표와_면적은_areas_에서_온다(self):
+        """SGIS 통계는 좌표도 면적도 주지 않는다. 지어내면 배후 수요가 그 값으로
+        안분되고 아무도 추측이었다는 걸 모른다."""
+        rows, 버림 = GP.sgis_to_cells(
+            [dict(self.실제["result"][0], adm_cd="99999")],
+            self.AREAS, "세대수", GP.SGIS_STATS["세대수"][1])
         self.assertEqual(rows, [])
-        self.assertEqual(버림["좌표없음"], 1)
+        self.assertEqual(버림["면적없음"], 1)
 
-    def test_사람도_일자리도_없는_격자는_넣지_않는다(self):
-        rows, 버림 = GP.to_rows([
-            {"lat": "37.5", "lon": "127.0", "hshld_cnt": "0", "corp_worker_cnt": "0"}])
+    def test_면적에서_한변을_환산한다(self):
+        rows, _ = GP.sgis_to_cells(
+            [dict(self.실제["result"][0], adm_cd="11200")],
+            self.AREAS, "세대수", GP.SGIS_STATS["세대수"][1])
+        self.assertAlmostEqual(float(rows[0]["한변_m"]), 16850000 ** 0.5, delta=1.0)
+
+    def test_두_통계의_경로가_정해져_있다(self):
+        self.assertIn("household.json", GP.SGIS_STATS["세대수"][0])
+        self.assertIn("company.json", GP.SGIS_STATS["직장인구"][0])
+        self.assertIn("household_cnt", GP.SGIS_STATS["세대수"][1])
+
+    def test_errCd_가_0이_아니면_자료로_받지_않는다(self):
+        원래 = urllib.request.urlopen
+
+        class R:
+            def __init__(s, b):
+                s._b = b.encode()
+                s.status = 200
+            def read(s):
+                return s._b
+            def __enter__(s):
+                return s
+            def __exit__(s, *a):
+                return False
+
+        urllib.request.urlopen = lambda url, timeout=None, context=None: R(
+            json.dumps({"errCd": "-401", "errMsg": "토큰 만료", "result": []},
+                       ensure_ascii=False))
+        try:
+            rows, err = GP.fetch_sgis_stats("T", "https://x", "/p", "11", "2023")
+        finally:
+            urllib.request.urlopen = 원래
         self.assertEqual(rows, [])
-        self.assertEqual(버림["인구없음"], 1)
-
-    def test_격자ID_가_없으면_좌표로_만든다(self):
-        """ID 가 없으면 겹침 제거가 안 되고, 같은 격자를 여러 번 더하게 된다."""
-        rows, _ = GP.to_rows([
-            {"lat": "37.5445", "lon": "127.0557", "hshld_cnt": "8", "corp_worker_cnt": "0"}])
-        self.assertTrue(rows[0]["격자ID"])
-
-    def test_겹친_격자를_두_번_더하지_않는다(self):
-        """후보지 조회 영역이 겹치면 같은 격자가 여러 번 온다."""
-        rows, _ = GP.to_rows([
-            {"grid_id": "G1", "lat": "37.5", "lon": "127.0", "hshld_cnt": "8", "corp_worker_cnt": "1"},
-            {"grid_id": "G1", "lat": "37.5", "lon": "127.0", "hshld_cnt": "8", "corp_worker_cnt": "1"},
-        ])
-        out, 중복 = GP.dedupe(rows)
-        self.assertEqual(len(out), 1)
-        self.assertEqual(중복, 1)
+        self.assertIn("토큰 만료", err)
 
 
 class TestReachesM2(unittest.TestCase):
@@ -99,12 +124,12 @@ class TestReachesM2(unittest.TestCase):
 
     def test_H_와_W_가_나온다(self):
         tmp = Path(tempfile.mkdtemp(prefix="grid-"))
-        rows, _ = GP.to_rows([
-            {"grid_id": "G1", "lat": "37.5445", "lon": "127.0557",
-             "hshld_cnt": "8", "corp_worker_cnt": "14"},
-            {"grid_id": "G2", "lat": "37.5450", "lon": "127.0562",
-             "hshld_cnt": "7", "corp_worker_cnt": "19"},
-        ])
+        rows = [
+            {"격자ID": "G1", "중심위도": 37.5445, "중심경도": 127.0557,
+             "한변_m": 100, "세대수": 8, "직장인구": 14},
+            {"격자ID": "G2", "중심위도": 37.5450, "중심경도": 127.0562,
+             "한변_m": 100, "세대수": 7, "직장인구": 19},
+        ]
         out = GP.write_rows(rows, tmp / "격자인구.csv")
         cells = M2.load_cells(out)
         self.assertEqual(len(cells), 2)
