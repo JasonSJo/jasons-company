@@ -40,7 +40,13 @@ const PLACE = (() => {
       const s = document.createElement('script');
       s.src = src;
       s.onload = () => res(true);
-      s.onerror = () => { delete loaded[src]; rej(new Error('스크립트를 불러오지 못했습니다')); };
+      s.onerror = () => {
+        delete loaded[src];
+        rej(new Error(src.indexOf('dapi.kakao.com') >= 0
+          ? '카카오 지도 SDK 를 불러오지 못했습니다 — JS 키가 맞는지, 이 도메인이 카카오 '
+            + '개발자 사이트의 플랫폼(Web)에 등록돼 있는지 확인하십시오'
+          : '스크립트를 불러오지 못했습니다'));
+      };
       document.head.appendChild(s);
     });
     return loaded[src];
@@ -55,16 +61,48 @@ const PLACE = (() => {
   }
 
   /* ── 검색 (키 있음) ─────────────────────────────── */
-  // 주소든 상호든 한 칸에 넣게 한다. 주소로 먼저 찾고, 없으면 장소명으로 찾는다.
+  /* 주소든 상호든 한 칸에 넣게 한다. 주소로 먼저 찾고, 없으면 장소명으로 찾는다.
+
+     ⚠ 실패를 '결과 없음' 과 구분한다. 카카오 JS 키는 **도메인을 등록해야** 동작하는데
+     (개발자 사이트 → 앱 → 플랫폼 → Web), 등록하지 않으면 SDK 는 스크립트를 잘 내려
+     주고 검색 콜백만 ERROR 로 돌아온다. 그것을 '결과가 없습니다' 로 보여 주면 사람은
+     주소가 잘못된 줄 알고 주소만 계속 고쳐 본다 — 설정 문제인데 데이터 문제로 읽힌다.
+     둘을 갈라서 무엇을 해야 하는지 말해 준다. */
+  const TIMEOUT_MS = 12000;
+
+  function statusOf(kakao) {
+    const S = (kakao.maps.services && kakao.maps.services.Status) || {};
+    return { OK: S.OK, ZERO: S.ZERO_RESULT, ERROR: S.ERROR };
+  }
+
   function search(query) {
     const q = String(query || '').trim();
     if (!q) return Promise.resolve([]);
-    return loadKakao().then(() => new Promise(resolve => {
-      const geo = new window.kakao.maps.services.Geocoder();
-      const places = new window.kakao.maps.services.Places();
-      const OK = window.kakao.maps.services.Status.OK;
+    return loadKakao().then(() => new Promise((resolve, reject) => {
+      const kakao = window.kakao;
+      const geo = new kakao.maps.services.Geocoder();
+      const places = new kakao.maps.services.Places();
+      const { OK, ZERO, ERROR } = statusOf(kakao);
+
+      // 콜백이 끝내 오지 않는 경우가 있다(네트워크 지연·SDK 내부 오류).
+      // 걸어 두지 않으면 화면이 '찾는 중…' 에서 영원히 멈춘다.
+      let 끝남 = false;
+      const 시계 = setTimeout(() => {
+        if (끝남) return;
+        끝남 = true;
+        reject(new Error('검색이 응답하지 않습니다 — 잠시 뒤 다시 시도하세요'));
+      }, TIMEOUT_MS);
+      const 마침 = fn => (...a) => { if (!끝남) { 끝남 = true; clearTimeout(시계); fn(...a); } };
+      const 성공 = 마침(resolve), 실패 = 마침(reject);
+
+      const 설정오류 = new Error(
+        '카카오가 검색을 거부했습니다 — JS 키가 이 도메인에 등록되지 않았을 수 있습니다. ' +
+        '카카오 개발자 사이트 → 내 애플리케이션 → 플랫폼 → Web 에 이 사이트 주소를 ' +
+        '넣으십시오. (키 자체가 틀렸을 수도 있습니다)');
 
       geo.addressSearch(q, (addrRes, addrStatus) => {
+        // 주소 검색이 ERROR 면 키·도메인 문제다. ZERO_RESULT 는 정상적인 '없음'.
+        if (addrStatus === ERROR) { 실패(설정오류); return; }
         const fromAddr = (addrStatus === OK ? addrRes : []).map(r => ({
           이름: (r.road_address && r.road_address.building_name) || '',
           주소: (r.road_address && r.road_address.address_name) || r.address_name || '',
@@ -74,6 +112,9 @@ const PLACE = (() => {
           위도: Number(r.y), 경도: Number(r.x), 출처: '주소',
         }));
         places.keywordSearch(q, (plRes, plStatus) => {
+          // 주소는 찾았는데 장소 검색만 ERROR 면 주소 결과라도 내보낸다 —
+          // 후보지는 '그 자리'가 기준이라 주소만으로도 일이 된다.
+          if (plStatus === ERROR && !fromAddr.length) { 실패(설정오류); return; }
           // 장소 검색은 우편번호·법정동코드를 주지 않는다. 빈 값으로 두고,
           // 필요하면 '주소만 고르기'(우편번호 서비스)로 채운다.
           const fromPlace = (plStatus === OK ? plRes : []).map(r => ({
@@ -93,7 +134,7 @@ const PLACE = (() => {
             seen[k] = true;
             out.push(r);
           });
-          resolve(out.slice(0, 8));
+          성공(out.slice(0, 8));
         });
       });
     }));
@@ -184,7 +225,7 @@ const PLACE = (() => {
     return SERVICES.map(s => ({ id: s.id, 이름: s.이름, 설명: s.설명, href: s.url(q) }));
   }
 
-  return { getKey, setKey, hasKey, search, openPostcode, parseCoords,
+  return { getKey, setKey, hasKey, search, statusOf, TIMEOUT_MS, openPostcode, parseCoords,
            suggestName, lawdCode, links, SERVICES };
 })();
 

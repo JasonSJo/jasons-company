@@ -34,6 +34,7 @@ class TestPlace(unittest.TestCase):
             raise AssertionError(f"place_dump.js 실패:\n{p.stderr}")
         cls.d = json.loads(p.stdout)
         cls.coords = {c["입력"]: c["결과"] for c in cls.d["coords"]}
+        cls.검색 = {c["사례"]: c for c in cls.d["검색"]}
 
     def test_좌표를_읽는다(self):
         want = {"위도": 37.5445, "경도": 127.0557}
@@ -91,6 +92,71 @@ class TestPlace(unittest.TestCase):
     def test_주소가_없으면_링크를_만들지_않는다(self):
         """빈 주소로 검색 URL 을 열면 엉뚱한 페이지로 보낸다."""
         self.assertEqual(self.d["링크_주소없음"], [])
+
+
+class TestSearchFailures(unittest.TestCase):
+    """검색 실패를 '결과 없음' 과 구분하는가.
+
+    카카오 JS 키는 **도메인을 등록해야** 동작한다. 등록하지 않으면 SDK 는 스크립트를
+    잘 내려 주고 검색 콜백만 ERROR 로 돌아온다. 그것을 '결과가 없습니다' 로 보여 주면
+    사람은 주소가 틀린 줄 알고 주소만 계속 고쳐 본다 — 설정 문제인데 데이터 문제로
+    읽힌다. 이 검사가 그 구분을 고정한다.
+
+    실제 카카오에 붙지 않는다(가짜 SDK). 보려는 것은 통신이 아니라 분기다.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        if not shutil.which("node"):
+            raise unittest.SkipTest("node 가 없어 위치 모듈 검사를 건너뜁니다")
+        p = subprocess.run(["node", str(DUMP)], capture_output=True, text=True, timeout=60)
+        if p.returncode != 0:
+            raise AssertionError(f"place_dump.js 실패:\n{p.stderr}")
+        cls.검색 = {c["사례"]: c for c in json.loads(p.stdout)["검색"]}
+
+    def test_주소_결과가_장소보다_앞이다(self):
+        """후보지는 '그 자리'가 기준이지 상호가 기준이 아니다."""
+        got = self.검색["둘 다 성공"]
+        self.assertEqual(got["출처"], ["주소", "장소"])
+        self.assertEqual(got["첫결과"]["법정동코드"], "1120011400")
+        self.assertEqual(got["첫결과"]["위도"], 37.5445)
+
+    def test_결과가_없으면_빈_목록이지_오류가_아니다(self):
+        got = self.검색["둘 다 없음"]
+        self.assertEqual(got["결과"], "ok")
+        self.assertEqual(got["건수"], 0)
+
+    def test_키나_도메인_문제는_결과_없음으로_숨기지_않는다(self):
+        got = self.검색["키/도메인 오류"]
+        self.assertEqual(got["결과"], "실패")
+        # 무엇을 해야 하는지가 메시지에 있어야 한다
+        self.assertIn("도메인", got["메시지"])
+        self.assertIn("플랫폼", got["메시지"])
+
+    def test_장소_검색만_실패하면_주소_결과는_살린다(self):
+        """주소만으로도 후보지 등록은 된다. 한쪽 실패로 전부 버리지 않는다."""
+        got = self.검색["장소만 오류 — 주소는 살린다"]
+        self.assertEqual(got["결과"], "ok")
+        self.assertEqual(got["출처"], ["주소"])
+
+    def test_주소만_없을_때는_장소_결과로_잇는다(self):
+        got = self.검색["주소만 없음"]
+        self.assertEqual(got["결과"], "ok")
+        self.assertEqual(got["출처"], ["장소"])
+        # 장소 검색은 우편번호·법정동코드를 주지 않는다 — 지어내지 않고 비워 둔다
+        self.assertEqual(got["첫결과"]["우편번호"], "")
+        self.assertEqual(got["첫결과"]["법정동코드"], "")
+
+
+class TestSearchTimeout(unittest.TestCase):
+    """콜백이 끝내 오지 않으면 화면이 '찾는 중…' 에서 영원히 멈춘다."""
+
+    def test_시한이_걸려_있다(self):
+        src = (Path(__file__).resolve().parents[2] / "input" / "js" / "place.js") \
+            .read_text(encoding="utf-8")
+        self.assertIn("TIMEOUT_MS", src)
+        self.assertIn("setTimeout", src)
+        self.assertIn("clearTimeout", src)   # 성공했는데 뒤늦게 거절하지 않는다
 
 
 if __name__ == "__main__":

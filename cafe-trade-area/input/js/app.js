@@ -189,7 +189,11 @@
         좌표는 지도에서 복사해 붙여넣으세요. <button type="button" class="sm ghost" id="keyopen">키 넣기</button></p>`}
       <div id="keybox" class="keybox hide">
         <label for="keyin">카카오맵 JS 키</label>
-        <small id="keyin-help">(도메인 제한으로 보호되므로 이 브라우저에만 저장됩니다)</small>
+        <small id="keyin-help">키를 넣는 것만으로는 동작하지 않습니다 —
+          카카오 개발자 사이트에서 <b>내 애플리케이션 → 앱 설정 → 플랫폼 → Web</b> 에
+          이 페이지의 주소를 등록해야 합니다. 등록하지 않으면 검색이 거부되는데,
+          그 모습이 &lsquo;주소를 못 찾았다&rsquo;와 비슷해 헷갈립니다.
+          키는 도메인 제한으로 보호되므로 이 브라우저에만 저장됩니다.</small>
         <div class="searchrow">
           <input type="text" id="keyin" name="카카오키" value="${esc(PLACE.getKey())}"
             autocomplete="off" spellcheck="false" placeholder="예: 3a1b…"
