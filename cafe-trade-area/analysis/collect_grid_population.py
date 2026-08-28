@@ -18,12 +18,19 @@ SGIS 는 전국 격자 센서스를 무료 API 로 준다. 여기를 이으면 �
   ✅ 인증  consumer_key/secret → result.accessToken · 토큰 수명 4시간
   ✅ 세대수 stats/household.json?adm_cd=11&year=2023
            → {"result":[{"household_cnt":"4141659","adm_cd":"11","adm_nm":"서울특별시"}]}
-  ❓ 종사자수 stats/company.json — 같은 모양일 것으로 보고 붙였으나 미확인
-  ❓ 경계   boundary/*.geojson — 되면 --areas 를 손으로 안 채워도 된다. 미확인
+  ✅ 종사자수 stats/company.json?adm_cd=11&low_search=1
+           → 25개 구가 각각 {"tot_worker":"198800","adm_cd":"11040","adm_nm":"성동구"}
+  ✅ 경계   boundary/hadmarea.geojson?adm_cd=11&low_search=1
+           → Polygon + properties{x,y,adm_cd,adm_nm}. 좌표는 UTM-K(EPSG:5179).
+             면적과 중심점이 여기서 나오므로 --areas 를 손으로 채우지 않아도 된다.
 
   처음에는 좌표 사각형(bbox)으로 격자를 받는 줄 알았는데 **틀렸다.** 실제로는
   행정구역 코드로 부르고 좌표도 면적도 주지 않는다. 그 가정을 따르던 코드는
   걷어냈다 — 반증된 가정을 남겨 두면 어느 쪽이 맞는지 헷갈린다.
+
+  ⚠ 그리고 그 행정구역 코드는 **법정동코드가 아니다.** 성동구는 법정동 11200 인데
+    SGIS 로는 11040 이고, SGIS 11200 은 동작구다. 앞자리를 잘라 쓰면 오류 하나 없이
+    다른 구의 인구가 들어온다. 그래서 코드는 SGIS 목록에서 이름으로 찾는다.
 
   확인이 덜 된 자리는 --probe 로 눌러 본다:
 
@@ -266,6 +273,320 @@ def sgis_to_cells(rows: list, areas: dict, 항목: str,
             "직장인구": round(n, 1) if 항목 == "직장인구" else 0,
         })
     return out, 버림
+
+
+# ── 후보지 → SGIS 행정구역코드 ──────────────────────────
+# ⚠ 여기가 이 파일에서 가장 조용히 틀릴 수 있는 자리였다.
+#
+#   법정동코드 앞 5자리를 SGIS adm_cd 로 그대로 쓰면 **다른 구의 인구를 받는다.**
+#   두 체계는 이름만 비슷하고 값이 다르다:
+#
+#       성동구   법정동 11200 · SGIS 11040
+#       동작구   법정동 11590 · SGIS 11200      ← 법정동 성동구 = SGIS 동작구
+#
+#   실제 응답(company.json?adm_cd=11&low_search=1)에서 성동구가 11040 으로 온 것을
+#   보고 알았다. 앞자리를 자르는 코드는 오류를 내지 않는다 — 멀쩡한 숫자가 들어오고,
+#   배후 수요 H·W 가 엉뚱한 구의 것으로 채워질 뿐이다.
+#
+# 그래서 코드는 **SGIS 에게 물어서** 정한다. 시도 아래를 low_search=1 로 받아
+# 이름으로 맞추고, 못 맞추면 그 후보지는 넣지 않는다.
+시도줄임 = {
+    "서울특별시": "서울", "부산광역시": "부산", "대구광역시": "대구",
+    "인천광역시": "인천", "광주광역시": "광주", "대전광역시": "대전",
+    "울산광역시": "울산", "세종특별자치시": "세종", "세종시": "세종",
+    "경기도": "경기", "강원도": "강원", "강원특별자치도": "강원",
+    "충청북도": "충북", "충청남도": "충남",
+    "전라북도": "전북", "전북특별자치도": "전북", "전라남도": "전남",
+    "경상북도": "경북", "경상남도": "경남",
+    "제주특별자치도": "제주", "제주도": "제주",
+}
+
+# 시도 코드는 두 체계가 같은 것으로 알려져 있지만 **그대로 믿지 않는다.** 강원은
+# 42→51, 전북은 45→52 로 바뀌었고 SGIS 가 어느 쪽을 쓰는지는 연도마다 다르다.
+# 그래서 후보를 여럿 두고, 받아 온 이름이 주소와 맞을 때만 그 코드를 쓴다.
+시도후보 = {
+    "서울": ["11"], "부산": ["26"], "대구": ["27"], "인천": ["28"],
+    "광주": ["29"], "대전": ["30"], "울산": ["31"], "세종": ["36"],
+    "경기": ["41"], "강원": ["51", "42"], "충북": ["43"], "충남": ["44"],
+    "전북": ["52", "45"], "전남": ["46"], "경북": ["47"], "경남": ["48"],
+    "제주": ["50"],
+}
+
+
+def 시도짧게(name: str) -> str:
+    s = str(name or "").strip()
+    return 시도줄임.get(s, s)
+
+
+def 주소쪼개기(주소: str) -> tuple[str, list[str]]:
+    """주소 → (시도 줄임말, 시군구 후보 이름들).
+
+    시군구는 한 토막일 때도('성동구') 두 토막일 때도('수원시 장안구') 있다.
+    긴 쪽을 먼저 대 본다 — '수원시' 로 먼저 맞추면 장안·권선·팔달이 다 걸린다.
+    """
+    tok = [t for t in str(주소 or "").replace("\t", " ").split() if t]
+    if not tok:
+        return "", []
+    시도 = 시도짧게(tok[0])
+    뒤 = tok[1:3]
+    후보 = []
+    if len(뒤) >= 2:
+        후보.append(뒤[0] + 뒤[1])
+    if 뒤:
+        후보.append(뒤[0])
+    return 시도, 후보
+
+
+def 이름맞나(sgis_nm: str, 후보: str) -> bool:
+    s = str(sgis_nm or "").replace(" ", "")
+    c = str(후보 or "").replace(" ", "")
+    if not (s and c):
+        return False
+    return s == c or s.endswith(c) or c.endswith(s)
+
+
+def resolve_regions(token: str, base: str, year: str,
+                    sites: list[dict]) -> tuple[list[dict], list[str]]:
+    """후보지를 SGIS 행정구역코드로 옮긴다. 못 옮긴 것은 말하고 버린다.
+
+    법정동코드는 **어느 시도인지 짐작하는 데만** 쓴다. 시군구 코드는 SGIS 가
+    돌려준 목록에서 이름으로 찾는다 — 그래야 두 체계가 어긋나도 조용히 틀리지 않는다.
+    """
+    path = SGIS_STATS["세대수"][0]
+    묶음, 문제 = {}, []
+    for st in sites:
+        주소 = str(st.get("주소") or "").strip()
+        이름 = str(st.get("후보지명") or "").strip() or "(이름 없음)"
+        시도, 시군구후보 = 주소쪼개기(주소)
+        if not (시도 and 시군구후보):
+            문제.append(f"{이름}: 주소에서 시도·시군구를 읽지 못했습니다 "
+                       f"({주소 or '주소 없음'})")
+            continue
+        b = "".join(ch for ch in str(st.get("법정동코드") or "") if ch.isdigit())
+        힌트 = [b[:2]] if len(b) >= 2 else []
+        묶음.setdefault((시도, tuple(힌트)), []).append((이름, 시군구후보))
+
+    풀림, 캐시 = {}, {}
+    for (시도, 힌트), 것들 in 묶음.items():
+        코드후보 = list(힌트) + [c for c in 시도후보.get(시도, []) if c not in 힌트]
+        if not 코드후보:
+            문제.append(f"{시도}: 아는 시도가 아닙니다 — "
+                       f"{', '.join(n for n, _ in 것들)}")
+            continue
+
+        하위, 쓴코드 = None, ""
+        for cd in 코드후보:
+            if cd in 캐시:
+                하위, 쓴코드 = 캐시[cd], cd
+                break
+            # ① 이 코드가 정말 그 시도인지 이름으로 확인한다
+            위, err = fetch_sgis_stats(token, base, path, cd, year, "0")
+            if err or not 위:
+                continue
+            받은시도 = 시도짧게(str((위[0] or {}).get("adm_nm") or ""))
+            if 받은시도 != 시도:
+                continue
+            # ② 그 아래 시군구 목록을 받는다
+            아래, err = fetch_sgis_stats(token, base, path, cd, year, "1")
+            if err or not 아래:
+                continue
+            캐시[cd] = 아래
+            하위, 쓴코드 = 아래, cd
+            break
+
+        if not 하위:
+            문제.append(f"{시도}: SGIS 에서 시도 코드를 확인하지 못했습니다 "
+                       f"(눌러 본 코드 {', '.join(코드후보)})")
+            continue
+
+        for 이름, 시군구후보 in 것들:
+            골라짐 = ""
+            for want in 시군구후보:
+                맞은 = [r for r in 하위
+                       if 이름맞나(r.get("adm_nm"), want)]
+                if len(맞은) == 1:
+                    골라짐 = str(맞은[0].get("adm_cd") or "").strip()
+                    # 같은 구역에 후보지가 여럿이면 한 줄에 모은다. 여기서 새로
+                    # 만들어 덮으면 앞 후보지가 목록에서 사라진다.
+                    자리 = 풀림.setdefault(골라짐, {
+                        "adm_cd": 골라짐,
+                        "adm_nm": str(맞은[0].get("adm_nm") or "").strip(),
+                        "시도코드": 쓴코드,
+                        "후보지": [],
+                    })
+                    자리["후보지"].append(이름)
+                    break
+                if len(맞은) > 1:
+                    문제.append(
+                        f"{이름}: '{want}' 에 맞는 구역이 {len(맞은)}개입니다 "
+                        f"({', '.join(str(m.get('adm_nm')) for m in 맞은[:4])})")
+                    골라짐 = "-"
+                    break
+            if not 골라짐:
+                문제.append(f"{이름}: {시도} 안에서 "
+                           f"'{시군구후보[0]}' 를 찾지 못했습니다")
+
+    return list(풀림.values()), 문제
+
+
+# ── 경계 → 면적·중심점 ────────────────────────────────
+# boundary/hadmarea.geojson 이 답한다는 것을 실제 호출로 확인했다:
+#   {"type":"FeatureCollection","features":[{"geometry":{"type":"Polygon",
+#     "coordinates":[[[953651.32,1959043.14],…]]},
+#     "properties":{"x":"953858","y":"1955185","adm_cd":"11010",
+#                   "adm_nm":"서울특별시 종로구"}}]}
+#
+# 좌표는 위경도가 아니라 **UTM-K(EPSG:5179)** 다. 그대로 위도·경도 칸에 넣으면
+# M2 가 그 구역을 지구 반대편으로 보고 P10 과 절대 겹치지 않는다 — H·W 가 0 이
+# 되고 그것이 '배후가 없는 자리' 라는 판단으로 읽힌다. 그래서 되돌려 놓는다.
+#
+# 면적은 되돌릴 필요가 없다. EPSG:5179 는 미터 좌표계라 다각형 넓이가 곧 m² 다.
+_5179 = {
+    "a": 6378137.0, "f": 1 / 298.257222101,
+    "lat0": math.radians(38.0), "lon0": math.radians(127.5),
+    "k0": 0.9996, "FE": 1_000_000.0, "FN": 2_000_000.0,
+}
+
+
+def _meridian_arc(a: float, e2: float, lat: float) -> float:
+    return a * ((1 - e2 / 4 - 3 * e2 ** 2 / 64 - 5 * e2 ** 3 / 256) * lat
+                - (3 * e2 / 8 + 3 * e2 ** 2 / 32 + 45 * e2 ** 3 / 1024)
+                * math.sin(2 * lat)
+                + (15 * e2 ** 2 / 256 + 45 * e2 ** 3 / 1024) * math.sin(4 * lat)
+                - (35 * e2 ** 3 / 3072) * math.sin(6 * lat))
+
+
+def tm5179_to_wgs84(x: float, y: float) -> tuple[float, float]:
+    """UTM-K(EPSG:5179) 좌표 → (위도, 경도). 횡메르카토르 역변환."""
+    p = _5179
+    a, f, k0 = p["a"], p["f"], p["k0"]
+    e2 = f * (2 - f)
+    ep2 = e2 / (1 - e2)
+    M = _meridian_arc(a, e2, p["lat0"]) + (y - p["FN"]) / k0
+    mu = M / (a * (1 - e2 / 4 - 3 * e2 ** 2 / 64 - 5 * e2 ** 3 / 256))
+    e1 = (1 - math.sqrt(1 - e2)) / (1 + math.sqrt(1 - e2))
+    lat1 = (mu
+            + (3 * e1 / 2 - 27 * e1 ** 3 / 32) * math.sin(2 * mu)
+            + (21 * e1 ** 2 / 16 - 55 * e1 ** 4 / 32) * math.sin(4 * mu)
+            + (151 * e1 ** 3 / 96) * math.sin(6 * mu)
+            + (1097 * e1 ** 4 / 512) * math.sin(8 * mu))
+    C1 = ep2 * math.cos(lat1) ** 2
+    T1 = math.tan(lat1) ** 2
+    s = math.sin(lat1)
+    N1 = a / math.sqrt(1 - e2 * s * s)
+    R1 = a * (1 - e2) / (1 - e2 * s * s) ** 1.5
+    D = (x - p["FE"]) / (N1 * k0)
+    lat = lat1 - (N1 * math.tan(lat1) / R1) * (
+        D ** 2 / 2
+        - (5 + 3 * T1 + 10 * C1 - 4 * C1 ** 2 - 9 * ep2) * D ** 4 / 24
+        + (61 + 90 * T1 + 298 * C1 + 45 * T1 ** 2 - 252 * ep2 - 3 * C1 ** 2)
+        * D ** 6 / 720)
+    lon = p["lon0"] + (
+        D
+        - (1 + 2 * T1 + C1) * D ** 3 / 6
+        + (5 - 2 * C1 + 28 * T1 - 3 * C1 ** 2 + 8 * ep2 + 24 * T1 ** 2)
+        * D ** 5 / 120) / math.cos(lat1)
+    return math.degrees(lat), math.degrees(lon)
+
+
+def ring_area(ring: list) -> float:
+    """구두끈 공식. 부호는 버린다 — 감는 방향은 여기서 뜻이 없다."""
+    n = len(ring)
+    if n < 3:
+        return 0.0
+    s = 0.0
+    for i in range(n):
+        x1, y1 = ring[i][0], ring[i][1]
+        x2, y2 = ring[(i + 1) % n][0], ring[(i + 1) % n][1]
+        s += x1 * y2 - x2 * y1
+    return abs(s) / 2.0
+
+
+def geom_area_m2(geom: dict) -> float:
+    """Polygon·MultiPolygon 넓이. 첫 고리는 겉, 나머지는 구멍이라 뺀다."""
+    if not isinstance(geom, dict):
+        return 0.0
+    t = geom.get("type")
+    coords = geom.get("coordinates") or []
+    폴리들 = coords if t == "MultiPolygon" else ([coords] if t == "Polygon" else [])
+    tot = 0.0
+    for poly in 폴리들:
+        if not poly:
+            continue
+        tot += ring_area(poly[0]) - sum(ring_area(h) for h in poly[1:])
+    return max(0.0, tot)
+
+
+def fetch_boundary(token: str, base: str, adm_cd: str, year: str,
+                   low_search: str = "0",
+                   path: str = "/OpenAPI3/boundary/hadmarea.geojson"
+                   ) -> tuple[list, str]:
+    q = urllib.parse.urlencode({
+        "accessToken": token, "adm_cd": adm_cd,
+        "year": year, "low_search": low_search,
+    })
+    try:
+        with urllib.request.urlopen(f"{base + path}?{q}", timeout=40,
+                                    context=ssl.create_default_context()) as r:
+            body = r.read().decode("utf-8", "replace")
+    except urllib.error.HTTPError as e:
+        return [], f"HTTP {e.code}"
+    except OSError as e:
+        return [], f"네트워크 오류: {e}"
+    try:
+        doc = json.loads(body)
+    except ValueError as e:
+        return [], f"JSON 파싱 실패: {e} · 앞부분 {body[:200]}"
+    if str(doc.get("errCd", "0")) not in ("0", "None", ""):
+        return [], f"errCd {doc.get('errCd')} {doc.get('errMsg', '')}"
+    feats = doc.get("features")
+    if not isinstance(feats, list) or not feats:
+        return [], f"경계가 비었습니다: {json.dumps(doc, ensure_ascii=False)[:200]}"
+    return feats, ""
+
+
+def areas_from_boundary(features: list) -> tuple[dict, list[str]]:
+    """경계 GeoJSON → 구역코드별 {면적_m2, 위도, 경도}. --areas 를 손으로 안 채워도 된다.
+
+    중심점은 properties.x/y 를 먼저 쓴다(통계청이 계산한 대표점). 없으면 겉고리의
+    평균으로 대신하되, 어느 쪽이든 EPSG:5179 → 위경도 변환을 거친다.
+    """
+    out, 문제 = {}, []
+    for ft in features:
+        if not isinstance(ft, dict):
+            continue
+        props = ft.get("properties") or {}
+        code = str(props.get("adm_cd") or "").strip()
+        if not code:
+            continue
+        면적 = geom_area_m2(ft.get("geometry") or {})
+        x, y = to_f(props.get("x")), to_f(props.get("y"))
+        if not (x and y):
+            ring = (((ft.get("geometry") or {}).get("coordinates") or [[]])[0]) or []
+            ring = ring[0] if ring and isinstance(ring[0][0], (list, tuple)) else ring
+            if ring:
+                x = sum(p[0] for p in ring) / len(ring)
+                y = sum(p[1] for p in ring) / len(ring)
+        if not (x and y and 면적 > 0):
+            문제.append(f"{code} {props.get('adm_nm', '')}: 면적이나 중심점이 없습니다")
+            continue
+        lat, lon = tm5179_to_wgs84(x, y)
+        out[code] = {"면적_m2": 면적, "위도": lat, "경도": lon,
+                     "구역명": str(props.get("adm_nm") or "").strip()}
+    return out, 문제
+
+
+def write_areas(areas: dict, path: Path) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8-sig", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["구역코드", "구역명", "면적_m2", "위도", "경도", "비고"])
+        for code in sorted(areas):
+            a = areas[code]
+            w.writerow([code, a.get("구역명", ""), round(a["면적_m2"], 1),
+                        round(a["위도"], 6), round(a["경도"], 6),
+                        "SGIS 경계에서 계산"])
+    return path
 
 
 def dedupe(rows: list[dict]) -> tuple[list[dict], int]:
@@ -668,23 +989,33 @@ def kosis_probe(api_key: str) -> int:
 def sgis_run(args, sites: list[dict], out: Path) -> int:
     """SGIS 에서 세대수·종사자수를 받아 격자인구.csv 를 만든다.
 
-    후보지의 법정동코드 앞 5자리를 행정구역 코드로 쓴다. --low-search 1 을 주면
-    그 아래 단계(행정동)까지 쪼개 받는다 — 시군구는 한 변이 4km 를 넘어 M2 가
-    '격자가 아니다' 경고를 내므로, 행정동이 나오면 그쪽이 낫다.
+    두 가지를 SGIS 에게 **물어서** 정한다. 짐작하지 않는다:
+
+      · 행정구역코드  후보지 주소의 시군구 이름을 SGIS 목록에서 찾는다.
+                    법정동코드 앞자리를 잘라 쓰면 다른 구를 받는다(성동 11200 →
+                    SGIS 로는 동작구다).
+      · 면적·중심점  boundary/hadmarea.geojson 에서 계산한다. --areas 를 주면
+                    그것을 먼저 쓰고, 없으면 여기서 만들어 파일로도 남긴다.
+
+    --low-search 1 을 주면 행정동까지 쪼개 받는다 — 시군구는 한 변이 4km 를 넘어
+    M2 가 '격자가 아니다' 경고를 낸다.
     """
     key = os.environ.get("SGIS_KEY", "").strip()
     secret = os.environ.get("SGIS_SECRET", "").strip()
     areas = load_areas(args.areas)
-    코드 = sorted({b[:5] for b in
-                 ("".join(c for c in str(st.get("법정동코드") or "") if c.isdigit())
-                  for st in sites) if len(b) >= 5})
 
     if not args.live:
         write_rows([], out)
+        읽힘 = [주소쪼개기(str(st.get("주소") or "")) for st in sites]
+        됨 = [f"{a} {b[0]}" for a, b in 읽힘 if a and b]
         print("dry-run — SGIS 를 호출하지 않았습니다.")
-        print(f"  후보지 {len(sites)}곳 → 조회할 시군구 {len(코드)}개"
-              + (f" ({', '.join(코드)})" if 코드 else " — 법정동코드가 없습니다"))
-        print(f"  키 {'있음' if key and secret else '없음'} · 구역 면적표 {len(areas)}건")
+        print(f"  후보지 {len(sites)}곳 · 주소에서 시군구를 읽은 것 {len(됨)}곳"
+              + (f" ({', '.join(sorted(set(됨))[:6])})" if 됨 else ""))
+        print("  ※ 행정구역코드는 SGIS 목록에서 이름으로 찾습니다 — "
+              "법정동코드 앞자리를 쓰지 않습니다(다른 구가 됩니다).")
+        print(f"  키 {'있음' if key and secret else '없음'} · "
+              f"구역 면적표 {len(areas)}건"
+              + ("" if areas else " (없으면 경계 API 에서 자동으로 만듭니다)"))
         print("  ※ dry-run 은 인구 수를 만들어 내지 않습니다.")
         print(f"  → {out} (빈 표)")
         return 0
@@ -692,21 +1023,11 @@ def sgis_run(args, sites: list[dict], out: Path) -> int:
     if not (key and secret):
         print("SGIS_KEY / SGIS_SECRET 이 필요합니다.", file=sys.stderr)
         return 2
-    if not 코드:
-        print("후보지에 법정동코드가 없습니다 — 입력 화면에서 주소를 검색하면 "
-              "채워집니다.", file=sys.stderr)
-        return 2
-    if not areas:
-        print("--areas 로 구역코드→면적·중심점 표가 필요합니다. SGIS 통계는 "
-              "행정구역 코드와 값만 주고 좌표도 면적도 주지 않습니다.", file=sys.stderr)
-        print("  뼈대 만들기: --make-areas --sites 후보지.csv --areas 행정구역.csv",
-              file=sys.stderr)
-        return 2
 
     # 인증 — 호스트가 옮겨 갔을 수 있어 두 곳을 다 본다
     후보 = [args.auth_url] + [h + AUTH_PATH for h in SGIS_HOSTS
                             if h + AUTH_PATH != args.auth_url]
-    token, 베이스 = "", ""
+    token, 베이스, err = "", "", ""
     for one in 후보:
         token, err = get_token(key, secret, one)
         if token:
@@ -715,6 +1036,43 @@ def sgis_run(args, sites: list[dict], out: Path) -> int:
     if not token:
         print(f"토큰 발급 실패 — {err}", file=sys.stderr)
         return 1
+
+    지역, 문제 = resolve_regions(token, 베이스, args.year, sites)
+    for m in 문제:
+        print(f"  🙋 {m}", file=sys.stderr)
+    if not 지역:
+        print("후보지를 SGIS 행정구역코드로 옮기지 못했습니다. "
+              "주소가 '서울 성동구 …' 처럼 시도부터 시작하는지 보십시오.",
+              file=sys.stderr)
+        return 1
+    for z in 지역:
+        print(f"  ✓ {z['adm_nm']} = SGIS {z['adm_cd']}"
+              f"  ← {', '.join(z.get('후보지', []))}")
+    코드 = [z["adm_cd"] for z in 지역]
+
+    # 면적·중심점 — 주지 않았으면 경계에서 만든다
+    if not areas:
+        만든것 = {}
+        for adm in 코드:
+            feats, err = fetch_boundary(token, 베이스, adm, args.year,
+                                        args.low_search)
+            if err:
+                print(f"  ✕ 경계 {adm} — {err}", file=sys.stderr)
+                continue
+            got, 빠진 = areas_from_boundary(feats)
+            만든것.update(got)
+            for m in 빠진:
+                print(f"      {m}", file=sys.stderr)
+        if 만든것:
+            areas = 만든것
+            표 = Path(args.areas) if args.areas else out.parent / "행정구역.csv"
+            write_areas(만든것, 표)
+            print(f"  ✓ 경계에서 면적·중심점 {len(만든것)}개 구역 → {표}")
+        else:
+            print("면적·중심점을 얻지 못했습니다. 경계 API 가 답하지 않으면 "
+                  "--areas 로 표를 넣어 주십시오.", file=sys.stderr)
+            print("  뼈대 만들기: --make-areas --sites 후보지.csv", file=sys.stderr)
+            return 1
 
     묶음 = []
     for 항목, (path, 키들) in SGIS_STATS.items():
@@ -756,6 +1114,10 @@ def make_areas(sites: list[dict], out: Path) -> int:
 
     면적과 중심점은 **비워서 낸다.** 여기서 지어내면 그 값으로 배후 수요가 안분되고,
     아무도 그게 추측이었다는 걸 모르게 된다. 어디서 받아 채우는지는 함께 적는다.
+
+    ⚠ 여기 적히는 코드는 **법정동코드** 앞 5자리다. SGIS 는 다른 코드를 쓴다
+      (성동구: 법정동 11200 · SGIS 11040). SGIS 쪽은 이 표가 필요 없다 —
+      --source sgis --live 가 경계 API 에서 스스로 만든다.
     """
     코드 = {}
     for st in sites:
@@ -776,6 +1138,8 @@ def make_areas(sites: list[dict], out: Path) -> int:
             w.writerow([code, "", "", "", "", "후보지: " + ", ".join(sorted(set(names)))])
 
     print(f"--areas 뼈대를 만들었습니다 — 시군구 {len(코드)}개 → {out}")
+    print("  (코드는 법정동코드 앞 5자리입니다. SGIS 코드가 아닙니다 — "
+          "SGIS 는 --live 가 경계에서 스스로 만듭니다.)")
     for code, names in sorted(코드.items()):
         print(f"  {code}  ← {', '.join(sorted(set(names)))}")
     if 없는것:

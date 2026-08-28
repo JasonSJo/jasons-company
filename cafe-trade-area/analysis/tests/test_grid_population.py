@@ -803,3 +803,306 @@ class TestKosisFind(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TestAdmCodeResolution(unittest.TestCase):
+    """법정동코드 앞자리를 SGIS 행정구역코드로 쓰면 **조용히 다른 구를 받는다.**
+
+    실제 응답에서 확인한 값:
+        성동구  법정동 11200 · SGIS 11040
+        동작구  법정동 11590 · SGIS 11200
+    즉 성동구 후보지의 법정동코드를 잘라 쓰면 동작구 인구가 들어온다. 오류는 나지
+    않는다 — 숫자가 멀쩡히 채워지고 그 후보지의 배후 수요만 남의 것이 된다.
+    여기서 지키는 것: 코드는 반드시 SGIS 가 준 목록에서 이름으로 찾는다.
+    """
+
+    # 서울 아래 일부. adm_cd 는 실제 SGIS 응답 값이다.
+    서울 = [
+        {"adm_cd": "11010", "adm_nm": "종로구", "household_cnt": "72000",
+         "tot_worker": "269222"},
+        {"adm_cd": "11040", "adm_nm": "성동구", "household_cnt": "134000",
+         "tot_worker": "198800"},
+        {"adm_cd": "11200", "adm_nm": "동작구", "household_cnt": "176000",
+         "tot_worker": "110000"},
+    ]
+
+    def setUp(self):
+        self.원래 = urllib.request.urlopen
+        self.부른곳 = []
+
+        class R:
+            def __init__(s, b):
+                s._b = b.encode()
+                s.status = 200
+            def read(s):
+                return s._b
+            def __enter__(s):
+                return s
+            def __exit__(s, *a):
+                return False
+
+        def fake(url, timeout=None, context=None):
+            self.부른곳.append(url)
+            q = dict(p.split("=", 1) for p in url.split("?", 1)[1].split("&")
+                     if "=" in p)
+            if "auth" in url:
+                return R(json.dumps({"errCd": 0,
+                                     "result": {"accessToken": "T"}}))
+            adm, low = q.get("adm_cd", ""), q.get("low_search", "0")
+            if adm == "11" and low == "0":
+                return R(json.dumps({"errCd": 0, "result": [
+                    {"adm_cd": "11", "adm_nm": "서울특별시",
+                     "household_cnt": "4141659", "tot_worker": "5699761"}]},
+                    ensure_ascii=False))
+            if adm == "11" and low == "1":
+                return R(json.dumps({"errCd": 0, "result": self.서울},
+                                    ensure_ascii=False))
+            for r in self.서울:
+                if r["adm_cd"] == adm:
+                    return R(json.dumps({"errCd": 0, "result": [r]},
+                                        ensure_ascii=False))
+            return R(json.dumps({"errCd": "-100", "errMsg": "없는 코드"},
+                                ensure_ascii=False))
+
+        urllib.request.urlopen = fake
+
+    def tearDown(self):
+        urllib.request.urlopen = self.원래
+
+    def 옮기기(self, sites):
+        return GP.resolve_regions("T", GP.SGIS_HOSTS[0], "2023", sites)
+
+    def test_성동구가_동작구가_되지_않는다(self):
+        지역, 문제 = self.옮기기([{"후보지명": "왕십리", "주소": "서울 성동구 왕십리로 222",
+                              "법정동코드": "1120000000"}])
+        self.assertEqual([z["adm_cd"] for z in 지역], ["11040"])
+        self.assertNotIn("11200", [z["adm_cd"] for z in 지역],
+                         "법정동 11200 을 그대로 쓰면 동작구를 받는다")
+        self.assertEqual(문제, [])
+
+    def test_이름으로_찾지_코드를_자르지_않는다(self):
+        """법정동코드가 아예 없어도 주소만으로 옮겨져야 한다."""
+        지역, 문제 = self.옮기기([{"후보지명": "성수", "주소": "서울특별시 성동구 아차산로",
+                              "법정동코드": ""}])
+        self.assertEqual([z["adm_cd"] for z in 지역], ["11040"])
+        self.assertEqual(문제, [])
+
+    def test_못_찾으면_버리고_말한다(self):
+        """맞는 구역이 없으면 아무 코드나 고르지 않는다 — 없는 채로 말한다."""
+        지역, 문제 = self.옮기기([{"후보지명": "어딘가", "주소": "서울 없는구 어딘가로 1",
+                              "법정동코드": "1199900000"}])
+        self.assertEqual(지역, [])
+        self.assertTrue(any("없는구" in m for m in 문제), 문제)
+
+    def test_주소가_없으면_짚어_준다(self):
+        지역, 문제 = self.옮기기([{"후보지명": "무주소", "주소": ""}])
+        self.assertEqual(지역, [])
+        self.assertTrue(any("무주소" in m for m in 문제), 문제)
+
+    def test_시도_이름이_다르면_그_코드를_쓰지_않는다(self):
+        """강원은 42→51 로 바뀌었다. 어느 쪽인지는 받아 본 이름으로 정한다."""
+        지역, 문제 = self.옮기기([{"후보지명": "강원", "주소": "강원 춘천시 중앙로",
+                              "법정동코드": "4211000000"}])
+        # 가짜 서버는 42 를 모른다 → 코드를 확인하지 못했다고 말하고 버린다
+        self.assertEqual(지역, [])
+        self.assertTrue(any("강원" in m for m in 문제), 문제)
+
+    def test_한_구역에_후보지_둘이면_한_번만_부른다(self):
+        지역, _ = self.옮기기([
+            {"후보지명": "A", "주소": "서울 성동구 1", "법정동코드": "1120000000"},
+            {"후보지명": "B", "주소": "서울 성동구 2", "법정동코드": "1120000000"},
+        ])
+        self.assertEqual([z["adm_cd"] for z in 지역], ["11040"])
+        self.assertEqual(sorted(지역[0]["후보지"]), ["A", "B"])
+
+
+class TestBoundaryToAreas(unittest.TestCase):
+    """경계 API 는 좌표를 **위경도로 주지 않는다.** UTM-K(EPSG:5179) 미터 좌표다.
+
+    그대로 위도·경도 칸에 넣으면 M2 가 그 구역을 지구 밖으로 보고 P10 과 절대
+    겹치지 않는다 → H·W 가 0 이 되고, 그것이 '배후가 없는 자리' 라는 판단으로 읽힌다.
+    """
+
+    def test_원점이_38N_127_5E_로_돌아온다(self):
+        lat, lon = GP.tm5179_to_wgs84(1_000_000, 2_000_000)
+        self.assertAlmostEqual(lat, 38.0, places=6)
+        self.assertAlmostEqual(lon, 127.5, places=6)
+
+    def test_실제_응답의_종로구_대표점이_종로구가_된다(self):
+        """properties {"x":"953858","y":"1955185"} — 실제로 받은 값."""
+        lat, lon = GP.tm5179_to_wgs84(953858, 1955185)
+        self.assertAlmostEqual(lat, 37.595, places=2)
+        self.assertAlmostEqual(lon, 126.977, places=2)
+
+    def test_사각형_넓이가_미터제곱이다(self):
+        """EPSG:5179 는 미터 좌표계라 구두끈 넓이가 그대로 m² 다."""
+        사각 = {"type": "Polygon", "coordinates": [[
+            [0, 0], [1000, 0], [1000, 2000], [0, 2000], [0, 0]]]}
+        self.assertAlmostEqual(GP.geom_area_m2(사각), 2_000_000.0)
+
+    def test_구멍은_뺀다(self):
+        구멍 = {"type": "Polygon", "coordinates": [
+            [[0, 0], [1000, 0], [1000, 1000], [0, 1000], [0, 0]],
+            [[100, 100], [200, 100], [200, 200], [100, 200], [100, 100]]]}
+        self.assertAlmostEqual(GP.geom_area_m2(구멍), 1_000_000.0 - 10_000.0)
+
+    def test_감는_방향이_반대여도_같은_넓이다(self):
+        시계 = {"type": "Polygon", "coordinates": [[
+            [0, 0], [0, 1000], [1000, 1000], [1000, 0], [0, 0]]]}
+        self.assertAlmostEqual(GP.geom_area_m2(시계), 1_000_000.0)
+
+    def test_경계에서_면적과_중심점이_나온다(self):
+        feats = [{"type": "Feature",
+                  "geometry": {"type": "Polygon", "coordinates": [[
+                      [953000, 1954000], [954000, 1954000],
+                      [954000, 1956000], [953000, 1956000], [953000, 1954000]]]},
+                  "properties": {"x": "953858", "y": "1955185",
+                                 "adm_cd": "11010", "adm_nm": "서울특별시 종로구"}}]
+        areas, 문제 = GP.areas_from_boundary(feats)
+        self.assertEqual(문제, [])
+        a = areas["11010"]
+        self.assertAlmostEqual(a["면적_m2"], 2_000_000.0)
+        self.assertAlmostEqual(a["위도"], 37.595, places=2)
+        self.assertAlmostEqual(a["경도"], 126.977, places=2)
+        self.assertLess(abs(a["위도"]), 90, "미터 좌표가 위도 칸에 그대로 들어갔다")
+
+    def test_중심점이_없으면_도형에서_구한다(self):
+        feats = [{"geometry": {"type": "Polygon", "coordinates": [[
+            [953000, 1954000], [954000, 1954000],
+            [954000, 1956000], [953000, 1956000], [953000, 1954000]]]},
+            "properties": {"adm_cd": "11010"}}]
+        areas, 문제 = GP.areas_from_boundary(feats)
+        self.assertEqual(문제, [])
+        self.assertAlmostEqual(areas["11010"]["위도"], 37.6, places=1)
+
+    def test_면적이_없으면_지어내지_않는다(self):
+        feats = [{"geometry": {"type": "Point", "coordinates": [953858, 1955185]},
+                  "properties": {"adm_cd": "11010", "adm_nm": "종로구",
+                                 "x": "953858", "y": "1955185"}}]
+        areas, 문제 = GP.areas_from_boundary(feats)
+        self.assertEqual(areas, {})
+        self.assertTrue(문제)
+
+
+class TestSgisLiveRun(unittest.TestCase):
+    """--areas 를 손으로 채우지 않아도 도는가, 그리고 그 값이 M2 까지 맞게 가는가."""
+
+    def setUp(self):
+        import os
+        self.tmp = Path(tempfile.mkdtemp(prefix="sgis-"))
+        self.원래 = urllib.request.urlopen
+        self.키 = {k: os.environ.get(k) for k in ("SGIS_KEY", "SGIS_SECRET")}
+        os.environ["SGIS_KEY"] = "K"
+        os.environ["SGIS_SECRET"] = "S"
+
+        구 = {"adm_cd": "11040", "adm_nm": "성동구",
+             "household_cnt": "134000", "tot_worker": "198800"}
+
+        class R:
+            def __init__(s, b):
+                s._b = b.encode()
+                s.status = 200
+            def read(s):
+                return s._b
+            def __enter__(s):
+                return s
+            def __exit__(s, *a):
+                return False
+
+        def fake(url, timeout=None, context=None):
+            q = dict(p.split("=", 1) for p in url.split("?", 1)[1].split("&")
+                     if "=" in p)
+            if "auth" in url:
+                return R(json.dumps({"errCd": 0, "result": {"accessToken": "T"}}))
+            adm, low = q.get("adm_cd", ""), q.get("low_search", "0")
+            if "boundary" in url:
+                return R(json.dumps({"type": "FeatureCollection", "errCd": 0,
+                    "features": [{"geometry": {"type": "Polygon", "coordinates": [[
+                        [957000, 1951000], [961000, 1951000],
+                        [961000, 1955000], [957000, 1955000], [957000, 1951000]]]},
+                        "properties": {"x": "959000", "y": "1953000",
+                                       "adm_cd": "11040", "adm_nm": "성동구"}}]},
+                    ensure_ascii=False))
+            if adm == "11" and low == "0":
+                return R(json.dumps({"errCd": 0, "result": [
+                    {"adm_cd": "11", "adm_nm": "서울특별시"}]}, ensure_ascii=False))
+            if adm == "11":
+                return R(json.dumps({"errCd": 0, "result": [구]},
+                                    ensure_ascii=False))
+            if adm == "11040":
+                return R(json.dumps({"errCd": 0, "result": [구]},
+                                    ensure_ascii=False))
+            return R(json.dumps({"errCd": "-100", "errMsg": "없는 코드"},
+                                ensure_ascii=False))
+
+        urllib.request.urlopen = fake
+
+        import csv
+        self.sites = self.tmp / "sites.csv"
+        with self.sites.open("w", encoding="utf-8-sig", newline="") as f:
+            w = csv.DictWriter(f, fieldnames=["후보지명", "주소", "법정동코드",
+                                              "위도", "경도"])
+            w.writeheader()
+            w.writerow({"후보지명": "왕십리", "주소": "서울 성동구 왕십리로 222",
+                        "법정동코드": "1120010800",
+                        "위도": "37.561", "경도": "127.037"})
+
+    def tearDown(self):
+        import os
+        urllib.request.urlopen = self.원래
+        for k, v in self.키.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+    def 실행(self, extra=()):
+        out = self.tmp / "격자인구.csv"
+        buf, old = io.StringIO(), sys.stdout
+        sys.stdout = buf
+        try:
+            rc = GP.main(["--live", "--sites", str(self.sites),
+                          "--out", str(out)] + list(extra))
+        finally:
+            sys.stdout = old
+        return rc, out, buf.getvalue()
+
+    def test_areas_없이도_돈다(self):
+        """경계 API 가 면적·중심점을 주므로 손작업이 없다."""
+        rc, out, 말 = self.실행()
+        self.assertEqual(rc, 0, 말)
+        rows = read_csv(out)
+        self.assertEqual(len(rows), 1, rows)
+        self.assertEqual(rows[0]["격자ID"], "SGIS:11040")
+        self.assertAlmostEqual(float(rows[0]["세대수"]), 134000.0)
+        self.assertAlmostEqual(float(rows[0]["직장인구"]), 198800.0)
+
+    def test_중심점이_한반도_안에_있다(self):
+        rc, out, 말 = self.실행()
+        r = read_csv(out)[0]
+        self.assertTrue(33 < float(r["중심위도"]) < 39, r["중심위도"])
+        self.assertTrue(124 < float(r["중심경도"]) < 132, r["중심경도"])
+
+    def test_만든_면적표를_파일로_남긴다(self):
+        """다음 실행과 통신사 유동인구 쪽에서 같이 쓴다."""
+        rc, out, 말 = self.실행()
+        표 = out.parent / "행정구역.csv"
+        self.assertTrue(표.exists(), 말)
+        self.assertEqual(read_csv(표)[0]["구역코드"], "11040")
+
+    def test_법정동코드를_그대로_부르지_않는다(self):
+        """11200 을 불렀다면 그건 동작구다."""
+        rc, out, 말 = self.실행()
+        self.assertIn("11040", 말)
+        self.assertNotIn("SGIS:11200", (out.read_text(encoding="utf-8-sig")))
+
+    def test_dry_run_은_인구를_지어내지_않는다(self):
+        out = self.tmp / "dry.csv"
+        buf, old = io.StringIO(), sys.stdout
+        sys.stdout = buf
+        try:
+            rc = GP.main(["--sites", str(self.sites), "--out", str(out)])
+        finally:
+            sys.stdout = old
+        self.assertEqual(rc, 0)
+        self.assertEqual(read_csv(out), [])
