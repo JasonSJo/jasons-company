@@ -69,6 +69,11 @@ jobs:
           if grep -rqE 'fetch\(|XMLHttpRequest|sendBeacon|WebSocket' _site/cafe-trade-area/consult/; then
             echo "상담 페이지에 외부 전송 코드가 있습니다"; exit 1
           fi
+          # 스스닷컴은 store-scout.com 으로 나갈 별도 사업이다. 한 저장소의 Pages 는
+          # 커스텀 도메인을 하나만 갖는다 — 지금은 이 저장소가 회사 사이트를 서비스하므로
+          # CNAME 을 만들지 않는다. 도메인을 붙일 때 무엇을 해야 하는지는 DOMAIN.md 에 적어 뒀다.
+          # (여기서 CNAME 을 미리 만들면 회사 사이트가 통째로 그 도메인으로 옮겨간다.)
+          test -f .github/pages/DOMAIN.md || { echo "도메인 이전 절차 문서가 없습니다"; exit 1; }
       - name: Upload site
         uses: actions/upload-pages-artifact@v3
         with:
