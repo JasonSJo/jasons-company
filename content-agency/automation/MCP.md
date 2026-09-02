@@ -29,12 +29,16 @@ ChatGPT를 직접 쓰기 위한 stdio MCP 서버.
 
 ### 1. 의존성
 
+저장소 루트에 venv 를 만들어 설치한다. `.mcp.json` 이 이 경로를 가리킨다.
+
 ```bash
-pip install -r requirements.txt
+python3 -m venv .venv
+.venv/bin/pip install -r content-agency/automation/requirements.txt
 ```
 
-시스템 파이썬에서 설치가 막히면 venv 를 쓰고, `.mcp.json` 의 `command` 를 그 venv 의
-`python` 절대경로로 바꾼다.
+시스템 파이썬을 직접 쓰지 않는 이유: 배포판이 관리하는 패키지와 충돌해 설치가 막히는 경우가
+있고(그러면 MCP 서버가 `ModuleNotFoundError` 로 기동 실패한다), venv 는 표준 라이브러리라
+추가 도구가 필요 없다. `.venv/` 는 `.gitignore` 에 있으므로 클론한 쪽에서 한 번 실행하면 된다.
 
 ### 2. 카카오 토큰 발급
 
