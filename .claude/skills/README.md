@@ -32,3 +32,37 @@
 `.claude/settings.json` 의 hooks 블록 삭제.
 
 업데이트: 위 레포에서 `skills/` 와 `hooks/` 를 다시 복사하면 된다.
+
+---
+
+## 업무 스킬 팩 4종 (84개)
+
+`/plugin` 이 이 환경에 없어 마켓플레이스 레포를 클론해 `skills/` 만 복사했다.
+`evals/`(팩 제작자의 테스트 픽스처)는 제외. 실행되는 스크립트는 포함돼 있지 않다.
+
+| 팩 | 개수 | 출처 | commit | 라이선스 |
+|---|---|---|---|---|
+| finance | 8 | anthropics/knowledge-work-plugins | `f30dc63` | LICENSE.knowledge-work-plugins |
+| legal | 9 | anthropics/knowledge-work-plugins | `f30dc63` | 〃 |
+| marketing | 49 | coreyhaines31/marketingskills | `d4ff28a` | LICENSE.marketingskills |
+| social-media | 17 | charlie947/social-media-skills | `d2e9487` | LICENSE.social-media-skills |
+
+finance·legal 은 Anthropic 공식, marketing·social 은 커뮤니티 제작이다.
+
+### 플러그인 설치와 다른 점
+
+플러그인이 아니라 **프로젝트 스킬**로 넣었기 때문에 이름 앞에 팩 이름이 붙지 않는다.
+가이드에 나오는 `/finance:variance-analysis` 가 아니라 그냥 `variance-analysis` 로 부른다.
+
+### 먼저 할 일
+
+1. **`voice-builder` 를 가장 먼저 실행한다.** social 팩의 나머지 16개가 그 결과 파일
+   (`about-me.md`, `voice.md`)을 읽고 나서야 글을 쓴다. 건너뛰면 전부 남의 말투로 나온다.
+2. `copywriting` 하나만 이 사업(업종 전문 콘텐츠 대행)의 말투·상품·가격에 맞게 고친다.
+   한 번에 다 고치려 하지 말 것.
+
+수정은 이 디렉터리의 복사본에서 바로 하면 된다 — 플러그인이 아니라 덮어쓰기 위험이 없다.
+
+### 빼는 법
+
+스킬 90개가 매 세션 로드되어 컨텍스트를 차지한다. 안 쓰는 팩은 디렉터리째 지우면 된다.
