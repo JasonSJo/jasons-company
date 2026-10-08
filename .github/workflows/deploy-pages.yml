@@ -42,15 +42,15 @@ jobs:
         run: |
           mkdir -p _site/content-agency
           cp index.html _site/index.html
-          cp -r content-agency/. _site/content-agency/
-          # 사내 자료는 사이트에 올리지 않는다. automation/ 은 MCP 서버·생성 스크립트,
-          # ops/ 는 영업·수익화 런북과 리드 백엔드, playbooks/ 는 업종별 플레이북,
-          # samples/ 는 납품 샘플 원고, templates/ 는 생성 프롬프트·대본 템플릿이다.
-          # app.js 가 ops/ 를 글자로 언급하지만 링크는 아니다.
-          for d in automation ops playbooks samples templates; do
-            rm -rf "_site/content-agency/$d"
-            test ! -e "_site/content-agency/$d" || { echo "$d/ 가 산출물에 있습니다"; exit 1; }
-          done
+          # 사이트에 올리는 것은 랜딩과 앱 둘뿐이다. 나머지(automation·ops·playbooks·
+          # samples·templates·README·QUICKSTART)는 사내 자료라 복사 자체를 하지 않는다.
+          # 통째로 복사하고 지우는 방식이면 새 디렉터리가 생길 때마다 샌다.
+          cp content-agency/index.html _site/content-agency/index.html
+          cp -r content-agency/app _site/content-agency/app
+          rm -f _site/content-agency/app/README.md
+          # 둘 말고 다른 것이 들어오면 멈춘다
+          extra="$(cd _site/content-agency && ls -A | grep -vxE 'index\.html|app' || true)"
+          test -z "$extra" || { echo "산출물에 예상 밖의 것이 있습니다: $extra"; exit 1; }
           # 메인 안내가 빠지면 사이트에 현관이 없어진다
           test -s _site/index.html || { echo "회사 메인(index.html)이 없습니다"; exit 1; }
           test -s _site/content-agency/index.html || { echo "콘텐츠 대행 랜딩이 없습니다"; exit 1; }
