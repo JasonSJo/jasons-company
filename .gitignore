@@ -9,3 +9,6 @@ _site/
 #   cafe-trade-area/analysis/.gitignore   output/ · __pycache__/ · *.pyc
 #   content-agency/automation/.gitignore  output/ · __pycache__/ · …
 # 여기에 다시 적으면 규칙이 두 곳에 생겨 한쪽만 고쳐지는 일이 생긴다.
+
+# 카카오·ChatGPT MCP 서버의 파이썬 가상환경 (.mcp.json 이 여기 python 을 쓴다)
+.venv/

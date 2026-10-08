@@ -1,3 +1,7 @@
 # 콘텐츠 자동 생성 엔진 의존성
 pyyaml>=6.0        # 캘린더 파싱 (dry-run 에도 필요)
 anthropic>=0.116  # Claude API — --live 실제 생성 시에만 필요
+
+# MCP 서버 (mcp_server.py) — 카카오톡·ChatGPT 연동
+mcp>=2.0          # MCPServer (구 FastMCP). v1 API 와 호환되지 않으니 2.x 유지
+httpx>=0.27       # 카카오·OpenAI REST 호출 (mcp 가 이미 의존하므로 추가 부담 없음)
