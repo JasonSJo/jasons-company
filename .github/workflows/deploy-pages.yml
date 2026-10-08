@@ -43,6 +43,9 @@ jobs:
           mkdir -p _site/content-agency
           cp index.html _site/index.html
           cp -r content-agency/. _site/content-agency/
+          # automation/ 은 서버 쪽 도구(MCP 서버·생성 스크립트)다. 사이트에 올릴 이유가 없다.
+          rm -rf _site/content-agency/automation
+          test ! -e _site/content-agency/automation/mcp_server.py || { echo "automation/ 이 산출물에 있습니다"; exit 1; }
           # 메인 안내가 빠지면 사이트에 현관이 없어진다
           test -s _site/index.html || { echo "회사 메인(index.html)이 없습니다"; exit 1; }
           test -s _site/content-agency/index.html || { echo "콘텐츠 대행 랜딩이 없습니다"; exit 1; }
