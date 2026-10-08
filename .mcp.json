@@ -3,14 +3,19 @@
     "playwright": {
       "command": "npx",
       "args": [
-        "-y", "@playwright/mcp@latest",
+        "-y",
+        "@playwright/mcp@latest",
         "--headless",
         "--isolated",
         "--no-sandbox",
-        "--browser", "chrome",
-        "--executable-path", "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
-        "--viewport-size", "1280,900",
-        "--output-dir", "/tmp/playwright-mcp"
+        "--browser",
+        "chrome",
+        "--executable-path",
+        "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
+        "--viewport-size",
+        "1280,900",
+        "--output-dir",
+        "/tmp/playwright-mcp"
       ]
     },
     "21st": {
@@ -18,6 +23,19 @@
       "url": "https://21st.dev/api/mcp",
       "headers": {
         "x-api-key": "${API_KEY_21ST}"
+      }
+    },
+    "kakao-chatgpt": {
+      "command": "${CLAUDE_PROJECT_DIR:-.}/.venv/bin/python",
+      "args": [
+        "${CLAUDE_PROJECT_DIR:-.}/content-agency/automation/mcp_server.py"
+      ],
+      "env": {
+        "KAKAO_REST_API_KEY": "${KAKAO_REST_API_KEY:-}",
+        "KAKAO_ACCESS_TOKEN": "${KAKAO_ACCESS_TOKEN:-}",
+        "KAKAO_REFRESH_TOKEN": "${KAKAO_REFRESH_TOKEN:-}",
+        "OPENAI_API_KEY": "${OPENAI_API_KEY:-}",
+        "OPENAI_MODEL": "${OPENAI_MODEL:-}"
       }
     }
   }
